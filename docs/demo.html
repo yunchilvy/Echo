@@ -383,7 +383,7 @@ footer a:hover{color:var(--text)}
   <p class="lede">蓝牙耳机、蓝牙音箱、2.4G 鼠标键盘 —— 一行一台，<b>不联网</b>、<b>不接管音频通道</b>、<b>空闲几乎不占 CPU</b>。读不到电量时它显示「—」，而不是编一个数字给你。</p>
   <p class="sub">Windows 10 / 11 · 单文件 12 MB · MIT 开源</p>
   <div class="cta">
-    <a class="btn primary" href="#get">
+    <a class="btn primary" id="dlbtn" href="https://github.com/yunchilvy/Echo/releases/download/v1.0.0/Echo.exe">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 13h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       下载 Echo.exe
     </a>
@@ -617,7 +617,7 @@ footer a:hover{color:var(--text)}
       <div class="tag">推荐</div>
       <h3>下载 Echo.exe</h3>
       <p>单文件、约 12 MB，不需要装 Python，没有安装程序，也没有开机引导。第一次运行会在 <code>%APPDATA%\Echo\</code> 建三个配置文件。</p>
-      <a class="dl" href="https://github.com/yunchilvy/Echo/releases" target="_blank" rel="noopener" id="dl1">去 Releases 取最新版 →</a>
+      <a class="dl" href="https://github.com/yunchilvy/Echo/releases/download/v1.0.0/Echo.exe" target="_blank" rel="noopener" id="dl1" data-dl>去 Releases 取最新版 →</a>
     </div>
     <div class="icard">
       <div class="tag">从源码</div>
@@ -915,7 +915,8 @@ footer a:hover{color:var(--text)}
 
   /* links: fill from a single place so the repo URL is easy to update */
   var REPO="https://github.com/yunchilvy/Echo";
-  ["ghlink","gh2","dl1"].forEach(function(id){ var el=document.getElementById(id); if(el) el.href=REPO; });
+  var DL="https://github.com/yunchilvy/Echo/releases/download/v1.0.0/Echo.exe";
+  ["ghlink","gh2"].forEach(function(id){ var el=document.getElementById(id); if(el) el.href=REPO; });
 
   /* gentle idle jitter so it feels alive */
   var idle=setInterval(function(){

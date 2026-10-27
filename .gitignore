@@ -15,3 +15,6 @@ shots/
 
 # 临时工具
 tools/cors_server.py
+
+# 本地临时目录
+.tmp/

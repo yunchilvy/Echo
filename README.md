@@ -101,6 +101,8 @@ Echo 就做这一件事。三个词：**看得到、信得过、不打扰。**
 
 **直接下载** —— 到 [Releases](../../releases) 取 `Echo.exe`，双击。单文件、约 12 MB，不需要装 Python，也没有安装程序。
 
+**不想装？先在线玩一下** —— [在线体验页](https://workbuddy.link/p/2oyKcSzDTld8cd7UgynP60) 把 Echo 的界面与交互完整搬进了浏览器：窗口能拖、能缩放、能拖动排序，紧凑模式、托盘悬停卡片、深浅主题都真实可用，源码就在 [`docs/demo.html`](docs/demo.html)。
+
 **从源码跑**
 
 ```bash
@@ -185,6 +187,8 @@ tools/              自检与取像素工具
 - [Tan-TanZi/InphicBatteryTray](https://github.com/Tan-TanZi/InphicBatteryTray) —— 英菲克 IN10 主动上报帧格式与离线判定
 
 图标是用距离场画的：一环、一段 1/4 圆弧、一颗琥珀色的中心点 —— 向外扩散的一圈回声，中心那颗点也是"电量"。
+
+Echo 正在参加 **WorkBuddy「1024 造物挑战」程序员节应用创作大赛**（投稿编号 `S1024-mvqq456w-xgm6`）。
 
 ## License
 
