@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Echo</title>
+<style>
+  /* ============ tokens ============ */
+  :root {
+    --bg: #0b0b0c;
+    --surface: #121213;
+    --surface-2: #171718;
+    --line: rgba(255,255,255,.065);
+    --line-strong: rgba(255,255,255,.11);
+    --text: #f4f1ec;
+    --text-2: #918d86;
+    --text-3: #5d5a55;
+    --accent: #e5b36a;          /* 10–30% 橙 */
+    --accent-soft: rgba(229,179,106,.12);
+    --ok: #6fca9f;              /* >30% 绿 */
+    --ok-soft: rgba(111,202,159,.13);
+    --danger: #e8705f;          /* <10% 红 */
+    --danger-soft: rgba(232,112,95,.14);
+    --mint: var(--ok);
+    --tile: rgba(255,255,255,.045);
+    --tile-hover: rgba(255,255,255,.075);
+    --shadow: 0 18px 60px -12px rgba(0,0,0,.7);
+    --ease-out: cubic-bezier(.22,1,.36,1);
+    --snap: cubic-bezier(.34,1.4,.64,1);
+  }
+  html[data-theme="light"] {
+    --bg: #f7f5f1;
+    --surface: #fffefb;
+    --surface-2: #f1eee8;
+    --line: rgba(20,18,14,.09);
+    --line-strong: rgba(20,18,14,.16);
+    --text: #171614;
+    --text-2: #6f6a62;
+    --text-3: #a29c93;
+    --accent: #b0721a;
+    --accent-soft: rgba(176,114,26,.11);
+    --ok: #2f8f68;
+    --ok-soft: rgba(47,143,104,.12);
+    --danger: #c5503c;
+    --danger-soft: rgba(197,80,60,.1);
+    --tile: rgba(20,18,14,.045);
+    --tile-hover: rgba(20,18,14,.075);
+    --shadow: 0 18px 50px -14px rgba(60,50,35,.28);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI",
+                 "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+    cursor: default;
+  }
+  html[data-theme="dark"] body { color-scheme: dark; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: default; }
+  svg { display: block; }
+
+  /* ============ 拖拽 / 缩放热区 ============ */
+  .rz { position: fixed; z-index: 90; -webkit-user-drag: none; }
+  .rz-n, .rz-s { left: 12px; right: 12px; height: 7px; cursor: ns-resize; }
+  .rz-w, .rz-e { top: 12px; bottom: 12px; width: 7px; cursor: ew-resize; }
+  .rz-n { top: 0 } .rz-s { bottom: 0 } .rz-w { left: 0 } .rz-e { right: 0 }
+  .rz-nw, .rz-ne, .rz-sw, .rz-se { width: 16px; height: 16px; }
+  /* 拖边框时只关"过渡"和那个无限循环的充电流光，别动一次性的入场动画 */
+  body.resizing *, body.resizing *::before, body.resizing *::after {
+    transition: none !important;
+  }
+  body.resizing .meter i { animation: none !important; }
+  body.resizing .row { opacity: 1 !important; transform: none !important; }
+  .rz-nw { left: 0; top: 0; cursor: nwse-resize }
+  .rz-ne { right: 0; top: 0; cursor: nesw-resize }
+  .rz-sw { left: 0; bottom: 0; cursor: nesw-resize }
+  .rz-se { right: 0; bottom: 0; cursor: nwse-resize }
+
+  /* ============ shell ============ */
+  #app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(120% 62% at 50% -18%, rgba(229,179,106,.055), transparent 62%),
+      var(--bg);
+  }
+  html[data-theme="light"] #app {
+    background:
+      radial-gradient(120% 62% at 50% -18%, rgba(176,114,26,.05), transparent 62%),
+      var(--bg);
+  }
+
+  /* ---- titlebar ---- */
+  .bar {
+    height: 46px; flex: 0 0 46px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 8px 0 18px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; flex: 1 1 auto; height: 100%; }
+  .brand svg { color: var(--text-2); }
+  .brand b {
+    font-weight: 500; font-size: 13px; letter-spacing: .14em;
+    text-transform: lowercase; color: var(--text-2);
+  }
+  .brand .sum {
+    font-size: 11.5px; color: var(--text-3); letter-spacing: .02em;
+    font-variant-numeric: tabular-nums; margin-left: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bar-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 9px;
+    display: grid; place-items: center; color: var(--text-3);
+    transition: background .18s var(--ease-out), color .18s var(--ease-out);
+  }
+  .icon-btn:hover { background: var(--tile-hover); color: var(--text); }
+  .icon-btn:active { transform: scale(.94); }
+  .icon-btn.close:hover { background: var(--danger-soft); color: var(--danger); }
+  .icon-btn.spin svg { animation: spin .7s var(--ease-out); }
+  @keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+
+  /* ---- head ---- */
+  main { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 4px 0 0; }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb {
+    background: var(--line-strong); border-radius: 99px;
+    border: 3px solid transparent; background-clip: padding-box;
+  }
+
+  .head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 10px 22px 14px;
+  }
+  .head .count { display: flex; align-items: baseline; gap: 7px; }
+  .head .count b {
+    font-size: 26px; font-weight: 300; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .head .count span { font-size: 12px; color: var(--text-2); letter-spacing: .02em; }
+  .head .stamp {
+    font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums;
+    letter-spacing: .02em;
+  }
+
+  /* ---- list ---- */
+  .list { list-style: none; padding: 0 8px; }
+  .row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 46px minmax(0,1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 15px 14px;
+    border-radius: 13px;
+    transition: background .2s var(--ease-out);
+    opacity: 0; transform: translateY(7px);
+    animation: rowin .52s var(--ease-out) forwards;
+  }
+  @keyframes rowin { to { opacity: 1; transform: none; } }
+  .row:hover { background: var(--tile); }
+  .row.dragging { background: var(--accent-soft); }
+  .row.dragging .meter { display: none; }
+  .row.drop-before::before,
+  .row.drop-after::after {
+    content: ""; position: absolute; left: 14px; right: 14px; height: 2px;
+    background: var(--accent); border-radius: 2px; z-index: 5;
+  }
+  .row.drop-before::before { top: 0; }
+  .row.drop-after::after { bottom: 0; }
+  body.dragging-row .row:hover { background: none; }
+  .row.off .name { color: var(--text-2); }
+  .row.off .tile { color: var(--text-3); opacity: .8; }
+  .row::after {
+    content: ""; position: absolute; left: 14px; right: 14px; bottom: 0;
+    height: 1px; background: var(--line); pointer-events: none;
+  }
+  .row:last-child::after { opacity: .45; }
+
+  .tile {
+    width: 46px; height: 46px; border-radius: 13px;
+    display: grid; place-items: center;
+    background: var(--tile); color: var(--text-2); position: relative;
+    transition: transform .22s var(--snap), background .2s var(--ease-out),
+                color .2s var(--ease-out);
+  }
+  .tile:hover { background: var(--tile-hover); color: var(--text); }
+  .tile:active { transform: scale(.93); }
+  .tile.live { color: var(--text); }
+  /* 图标角上的电量色点：一眼看出档位，不必读数字 */
+  .tile::after {
+    content: ""; position: absolute; right: -1px; bottom: -1px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--band, transparent);
+    box-shadow: 0 0 0 2.5px var(--bg);
+    transition: background .4s;
+  }
+  .row.off .tile::after, .row.none .tile::after { display: none; }
+
+  .info { min-width: 0; }
+  .name {
+    font-size: 15px; font-weight: 450; letter-spacing: .002em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 2px 0; border-radius: 5px; outline: none;
+    transition: background .15s;
+  }
+  .name:hover { background: var(--tile); box-shadow: -6px 0 0 var(--tile), 6px 0 0 var(--tile); }
+  .name.editing {
+    cursor: text;
+    background: var(--surface-2);
+    box-shadow: 0 0 0 1.5px var(--accent), -6px 0 0 var(--surface-2), 6px 0 0 var(--surface-2);
+    user-select: text; cursor: text;
+  }
+  .meta {
+    margin-top: 4px; font-size: 11.5px; color: var(--text-3);
+    letter-spacing: .015em; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .meta .dot { width: 2px; height: 2px; border-radius: 50%; background: currentColor; opacity: .8; }
+  .meta .warn { color: var(--text-2); }
+  .meta .chg { color: var(--ok); }
+
+  .val { display: flex; align-items: baseline; gap: 1px; padding-top: 1px;
+         transition: transform .24s var(--ease-out); }
+  .row:hover .val { transform: translateX(-34px); }
+  .num {
+    font-size: 27px; font-weight: 300; letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+    transition: color .3s var(--ease-out);
+  }
+  .pct { font-size: 11.5px; color: var(--text-3); font-weight: 400; }
+  .val[data-band="ok"] .num { color: var(--ok); }
+  .val[data-band="warn"] .num { color: var(--accent); }
+  .val[data-band="low"] .num, .val[data-band="low"] .pct { color: var(--danger); }
+  .val[data-band="none"] .num { font-size: 21px; color: var(--text-2); letter-spacing: .04em; }
+
+  /* 电量条（就是那根分隔线） */
+  .meter {
+    position: absolute; left: 14px; bottom: 0; height: 1px;
+    width: calc(100% - 28px); pointer-events: none; overflow: hidden;
+  }
+  .meter i {
+    position: absolute; inset: 0 auto 0 0; width: 0;
+    background: var(--band, var(--ok)); border-radius: 0 2px 2px 0;
+    transition: width .85s var(--ease-out), background .4s;
+  }
+  .row[data-chg="1"] .meter i {
+    background: linear-gradient(90deg, var(--band,var(--ok)) 0%, #fff8ec 46%, var(--band,var(--ok)) 62%);
+    background-size: 260% 100%;
+    animation: flow 3.6s linear infinite;
+  }
+  @keyframes flow { from { background-position: 120% 0 } to { background-position: -80% 0 } }
+
+  .more {
+    position: absolute; right: 10px; top: 9px;
+    width: 24px; height: 24px; border-radius: 7px;
+    display: grid; place-items: center;
+    color: var(--text-3); background: transparent;
+    opacity: 0; pointer-events: none;
+    transform: scale(.9);
+    transition: opacity .18s, transform .2s var(--snap), background .18s;
+  }
+  .row:hover .more { opacity: 1; pointer-events: auto; transform: scale(1); }
+  .more:hover { background: var(--tile-hover); color: var(--text); }
+  .row:hover .more { cursor: grab; }
+  body.dragging-row .more { cursor: grabbing; }
+
+  /* ---- empty ---- */
+  .empty[hidden] { display: none; }
+  .empty {
+    padding: 46px 30px 30px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+  }
+  .empty .art { color: var(--text-3); opacity: .85; }
+  .empty h3 { font-size: 14px; font-weight: 450; }
+  .empty p { font-size: 12px; color: var(--text-3); line-height: 1.7; max-width: 300px; }
+
+  /* ---- footer ---- */
+  footer {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px 14px 22px;
+    border-top: 1px solid var(--line);
+  }
+  .foot-note { font-size: 11.5px; color: var(--text-3); letter-spacing: .02em; }
+  .foot-note b { color: var(--text-2); font-weight: 450; font-variant-numeric: tabular-nums; }
+  .foot-actions { display: flex; gap: 6px; }
+  .pill {
+    height: 28px; padding: 0 11px; border-radius: 8px;
+    font-size: 12px; color: var(--text-2);
+    display: flex; align-items: center; gap: 6px;
+    transition: background .18s, color .18s, transform .15s var(--snap);
+  }
+  .pill:hover { background: var(--tile-hover); color: var(--text); }
+  .pill:active { transform: scale(.96); }
+
+  /* ============ 紧凑模式 ============ */
+  body.mini .bar { height: 38px; flex: 0 0 38px; padding: 0 6px 0 13px; }
+  body.mini .head, body.mini footer, body.mini .empty p, body.mini .empty h3 { display: none; }
+  body.mini main { padding: 0; }
+  body.mini .list { padding: 0 6px 6px; }
+  body.mini .row {
+    grid-template-columns: 24px minmax(0,1fr) auto;
+    gap: 9px; padding: 7px 10px 7px 12px; border-radius: 9px;
+  }
+  body.mini .tile { width: 24px; height: 24px; border-radius: 7px; background: none; }
+  body.mini .tile::after { display: none; }
+  /* 紧凑模式下用左边一根 2px 色条表示档位，比盖在图标上更干净 */
+  body.mini .row::before {
+    content: ""; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 16px; border-radius: 2px; background: var(--band, transparent);
+  }
+  body.mini .row.none::before, body.mini .row.off::before { display: none; }
+  body.mini .name { font-size: 12.5px; padding: 0; }
+  body.mini .name:hover { background: none; box-shadow: none; }
+  body.mini .meta { display: none; }
+  body.mini .num { font-size: 14px; font-weight: 400; }
+  body.mini .pct { font-size: 10px; }
+  body.mini .more, body.mini .meter { display: none; }
+  body.mini .row:hover .val { transform: none; }
+  body.mini .row::after { left: 46px; right: 10px; }
+  body.mini #btn-min, body.mini #btn-refresh { display: none; }
+  body.mini .brand .sum { display: block; }
+
+  /* 紧凑模式下的悬停详情 */
+  #mtip {
+    position: fixed; z-index: 88; pointer-events: none;
+    background: var(--surface-2); border: 1px solid var(--line-strong);
+    border-radius: 10px; box-shadow: var(--shadow);
+    padding: 8px 11px; min-width: 168px; max-width: 300px;
+    font-size: 11.5px; line-height: 1.65; color: var(--text-2);
+    opacity: 0; transform: translateY(-4px);
+    transition: opacity .16s, transform .18s var(--ease-out);
+  }
+  #mtip.on { opacity: 1; transform: none; }
+  #mtip b { color: var(--text); font-size: 12.5px; font-weight: 450; display: block; margin-bottom: 2px; }
+  #mtip .k { color: var(--text-3); }
+  #mtip em { font-style: normal; color: var(--band, var(--ok)); font-variant-numeric: tabular-nums; }
+
+  /* ============ 低电量预警 ============ */
+  .alert {
+    position: fixed; z-index: 92; left: 50%; bottom: 58px;
+    transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
+    width: min(430px, calc(100% - 28px));
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 13px 14px 13px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--danger);
+    border-radius: 14px;
+    box-shadow: 0 18px 46px -12px rgba(0,0,0,.6), 0 0 0 4px var(--danger-soft);
+    transition: opacity .26s var(--ease-out), transform .32s var(--snap);
+  }
+  .alert.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .alert .ico {
+    flex: 0 0 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    background: var(--danger-soft); color: var(--danger);
+  }
+  .alert h4 { font-size: 12.5px; font-weight: 500; color: var(--danger); letter-spacing: .02em; }
+  .alert p { margin-top: 3px; font-size: 11.5px; color: var(--text-2); line-height: 1.6; }
+  .alert .act { flex: 0 0 auto; align-self: center; }
+  .alert .act button {
+    font-size: 11.5px; color: var(--text-2); padding: 5px 9px; border-radius: 7px;
+    background: var(--tile);
+  }
+  .alert .act button:hover { background: var(--tile-hover); color: var(--text); }
+
+  /* ============ overlays ============ */
+  .scrim {
+    position: fixed; inset: 46px 0 0 0; z-index: 40;
+    background: rgba(0,0,0,.5); backdrop-filter: blur(1.5px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .26s var(--ease-out);
+  }
+  .scrim.on { opacity: 1; pointer-events: auto; }
+
+  .sheet {
+    position: fixed; z-index: 41;
+    left: 0; right: 0; bottom: 0; top: 46px;
+    background: var(--surface);
+    border-radius: 16px 16px 0 0;
+    border-top: 1px solid var(--line-strong);
+    box-shadow: var(--shadow);
+    transform: translateY(102%);
+    transition: transform .38s var(--ease-out);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sheet.on { transform: none; }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 16px 10px 22px; flex: 0 0 auto;
+  }
+  .sheet-head h2 { font-size: 15px; font-weight: 500; letter-spacing: .01em; }
+  .sheet-body { overflow-y: auto; padding: 0 12px 22px; }
+  .sheet-body::-webkit-scrollbar { width: 8px; }
+  .sheet-body::-webkit-scrollbar-thumb {
+    background: var(--line-strong); border-radius: 99px;
+    border: 3px solid transparent; background-clip: padding-box;
+  }
+
+  .group { padding: 8px 10px; }
+  .group + .group { border-top: 1px solid var(--line); }
+  .group h4 {
+    font-size: 10.5px; font-weight: 500; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--text-3);
+    padding: 10px 10px 4px;
+  }
+  .item {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; padding: 12px 10px; border-radius: 10px;
+    transition: background .18s;
+    flex-wrap: wrap;                    /* 放不下就把控件折到下一行 */
+  }
+  .item > div:first-child { min-width: 0; flex: 1 1 190px; }
+  .item:hover { background: var(--tile); }
+  .item .t { font-size: 13.5px; }
+  .item .d {
+    font-size: 11.5px; color: var(--text-3); margin-top: 3px; line-height: 1.5;
+    max-width: 46ch; overflow-wrap: anywhere;
+  }
+  .item.act { cursor: default; }
+  .item.act .foot-note { color: var(--accent); }
+  .row-btns { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 10px 6px; }
+  .btn {
+    height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12px;
+    background: var(--tile); color: var(--text);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background .16s, transform .14s var(--snap);
+  }
+  .btn:hover { background: var(--tile-hover); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--accent-soft); color: var(--accent); }
+
+  /* switch */
+  .sw {
+    flex: 0 0 auto; width: 38px; height: 22px; border-radius: 99px;
+    background: var(--tile-hover); position: relative;
+    transition: background .24s var(--ease-out);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-2);
+    transition: transform .28s var(--snap), background .24s;
+  }
+  .sw[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(229,179,106,.35); }
+  .sw[aria-checked="true"]::after { transform: translateX(16px); background: var(--accent); }
+  .sw:active::after { width: 19px; }
+
+  /* segmented */
+  .seg {
+    display: flex; gap: 2px; padding: 2px; border-radius: 9px;
+    background: var(--tile); position: relative;
+    flex: 0 0 auto;                     /* 不许被左侧文字挤扁 */
+  }
+  .seg button {
+    height: 24px; padding: 0 9px; border-radius: 7px;
+    font-size: 11.5px; color: var(--text-2); position: relative; z-index: 1;
+    white-space: nowrap;                /* 关键：字绝不竖着排 */
+    transition: color .2s;
+  }
+  .seg button[data-on="1"] { color: var(--text); }
+  .seg i {
+    position: absolute; z-index: 0; top: 2px; left: 0; height: 24px; width: 0;
+    border-radius: 7px; background: var(--surface-2);
+    box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 0 0 1px var(--line);
+    transition: transform .3s var(--ease-out), width .3s var(--ease-out);
+  }
+
+  /* popover */
+  .pop {
+    position: fixed; z-index: 60;
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 13px; box-shadow: var(--shadow); padding: 8px;
+    transform-origin: var(--ox, 50%) var(--oy, 50%);
+    transform: scale(.94); opacity: 0; pointer-events: none;
+    transition: transform .22s var(--snap), opacity .16s var(--ease-out);
+  }
+  .pop.on { transform: none; opacity: 1; pointer-events: auto; }
+  .pop.menu { padding: 5px; min-width: 138px; }
+  .pop.menu button {
+    display: flex; align-items: center; gap: 9px;
+    width: 100%; padding: 8px 10px; border-radius: 8px;
+    font-size: 12.5px; color: var(--text); transition: background .15s;
+  }
+  .pop.menu button:hover { background: var(--tile-hover); }
+  .pop.menu button.danger { color: var(--danger); }
+  .pop.menu button svg { color: var(--text-3); }
+  .pop.menu button.danger svg { color: var(--danger); opacity: .8; }
+
+  .pop.icons { width: 268px; }
+  .pop.icons .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .pop.icons .grid button {
+    height: 58px; border-radius: 9px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 5px; color: var(--text-2); transition: background .16s, color .16s;
+  }
+  .pop.icons .grid button:hover { background: var(--tile-hover); color: var(--text); }
+  .pop.icons .grid button[data-on="1"] { background: var(--accent-soft); color: var(--accent); }
+  .pop.icons .grid span { font-size: 10px; letter-spacing: .02em; }
+
+  /* diag */
+  .diag { padding: 4px 10px 0; }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv dt { color: var(--text-3); }
+  .kv dd { color: var(--text); font-variant-numeric: tabular-nums; word-break: break-all; }
+  .log {
+    margin-top: 12px; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 11px; line-height: 1.65; color: var(--text-2);
+    max-height: 210px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+    background: var(--bg);
+  }
+  .log b { color: var(--accent); font-weight: 400; }
+  .note { margin-top: 12px; font-size: 11.5px; color: var(--text-3); line-height: 1.75; }
+  .note code {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px;
+    background: var(--tile); padding: 1px 4px; border-radius: 4px;
+  }
+
+  /* toast */
+  .toast {
+    position: fixed; z-index: 90; left: 50%; bottom: 26px;
+    transform: translate(-50%, 10px); opacity: 0;
+    background: var(--surface-2); border: 1px solid var(--line-strong);
+    color: var(--text); font-size: 12px; padding: 8px 14px; border-radius: 9px;
+    box-shadow: var(--shadow); pointer-events: none;
+    transition: opacity .22s, transform .28s var(--snap);
+    max-width: 84%; text-align: center;
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* 窗口被拖得很窄时：优先保住设备名与电量，其余让位 */
+  @media (max-width: 560px) {
+    .item { align-items: flex-start; gap: 8px; }
+    .item > div:first-child { flex-basis: 100%; }
+    .item .seg, .item .switch { align-self: flex-start; }
+    .item .d { max-width: none; }
+  }
+
+  @media (max-width: 430px) {
+    .head .stamp, .brand .sum { display: none; }
+    .head { padding: 8px 18px 10px; }
+    .row { grid-template-columns: 38px minmax(0,1fr) auto; gap: 11px; padding: 12px 10px; }
+    .tile { width: 38px; height: 38px; border-radius: 11px; }
+    .num { font-size: 23px; }
+    .row:hover .val { transform: none; }
+    .foot-note { display: none; }
+  }
+
+  .busy .num { opacity: .45; transition: opacity .2s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <div class="brand" id="drag">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="9.05" stroke="currentColor" stroke-width="1.9"/>
+        <path d="M6.5 12a5.5 5.5 0 0 1 5.5-5.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="2.5" stroke="var(--accent)" stroke-width="1.9"/>
+      </svg>
+      <b>echo</b>
+      <span class="sum" id="sum"></span>
+    </div>
+    <div class="bar-actions">
+      <button class="icon-btn" id="btn-refresh" title="立即刷新">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M20 12a8 8 0 1 1-2.6-5.9M20 4.6V10h-5.2"
+                stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-min" title="收进托盘（Ctrl+M）">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 12h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-compact" title="切换窗口模式">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M3.5 11h17" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </button>
+      <button class="icon-btn close" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"
+                stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="head">
+      <div class="count"><b id="cnt">0</b><span id="cnt-label">台设备在线</span></div>
+      <div class="stamp" id="stamp">正在扫描…</div>
+    </div>
+    <ul class="list" id="list"></ul>
+    <div class="empty" id="empty" hidden>
+      <svg class="art" width="72" height="72" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9.05" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M6.5 12a5.5 5.5 0 0 1 5.5-5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.3" opacity=".65"/>
+      </svg>
+      <h3>还没有发现无线设备</h3>
+      <p>打开蓝牙耳机或音箱，或插入 2.4G 接收器，Echo 会自动把它接进这份清单。</p>
+      <button class="pill" id="btn-rescan" style="margin-top:2px">重新扫描</button>
+    </div>
+  </main>
+
+  <footer>
+    <div class="foot-note">每 <b id="iv">60</b> 秒自动刷新</div>
+    <div class="foot-actions">
+      <button class="pill" id="btn-settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M12 3.2v2.1M12 18.7v2.1M20.8 12h-2.1M5.3 12H3.2M18.2 5.8l-1.5 1.5M7.3 16.7l-1.5 1.5M18.2 18.2l-1.5-1.5M7.3 7.3L5.8 5.8"
+                stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        设置
+      </button>
+    </div>
+  </footer>
+</div>
+
+<!-- 缩放热区（无边框窗口靠它们把消息转成系统缩放） -->
+<div class="rz rz-n" data-edge="n"></div>
+<div class="rz rz-s" data-edge="s"></div>
+<div class="rz rz-w" data-edge="w"></div>
+<div class="rz rz-e" data-edge="e"></div>
+<div class="rz rz-nw" data-edge="nw"></div>
+<div class="rz rz-ne" data-edge="ne"></div>
+<div class="rz rz-sw" data-edge="sw"></div>
+<div class="rz rz-se" data-edge="se"></div>
+
+<div class="alert" id="alert" role="alert">
+  <div class="ico">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M12 8.4v4.6M12 16.4v.2M10.3 4.2 3.1 17a2 2 0 0 0 1.7 3h14.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"
+            stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div style="min-width:0">
+    <h4>电量预警</h4>
+    <p id="alert-text"></p>
+  </div>
+  <div class="act"><button id="alert-ok">知道了</button></div>
+</div>
+
+<div id="mtip"></div>
+<div class="scrim" id="scrim"></div>
+
+<section class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-head">
+    <h2 id="sheet-title">设置</h2>
+    <button class="icon-btn" id="sheet-close" title="返回">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</section>
+
+<div class="pop" id="pop"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Echo · 界面
+   ============================================================ */
+const API = () => (window.pywebview && window.pywebview.api) || null;
+const LOW = 10, WARN = 30;          // <10 红 / 10–30 橙 / >30 绿
+
+const ICONS = {
+  mouse: `<path d="M12 3.4c3.05 0 4.9 2.2 4.9 5.4v6.4c0 3.2-1.85 5.4-4.9 5.4s-4.9-2.2-4.9-5.4V8.8c0-3.2 1.85-5.4 4.9-5.4Z"/><path d="M12 3.6v5.6"/>`,
+  keyboard: `<rect x="2.6" y="6.4" width="18.8" height="11.2" rx="2.6"/><path d="M6.3 10.1h.01M9.4 10.1h.01M12.5 10.1h.01M15.6 10.1h.01M18.7 10.1h.01M7.4 13.1h.01M10.5 13.1h.01M13.6 13.1h.01M16.7 13.1h.01M8.8 15.7h6.4" stroke-linecap="round"/>`,
+  combo: `<rect x="2.6" y="4.4" width="14.6" height="8.6" rx="2.2"/><path d="M6 7.6h.01M9 7.6h.01M12 7.6h.01M5.6 10.2h6.2"/><path d="M16.4 11.4c2.5 0 3.6 1.6 3.6 3.7v2.1c0 2.1-1.1 3.7-3.6 3.7s-3.6-1.6-3.6-3.7v-2.1c0-2.1 1.1-3.7 3.6-3.7Z"/><path d="M16.4 11.6v3.2"/>`,
+  earbuds: `<path d="M7.6 4.2c1.9 0 3.1 1.5 3.1 3.4v4.1c0 1.6-1 2.7-2.4 2.9v4.9"/><circle cx="7.6" cy="7.4" r="3.2"/><path d="M16.4 4.2c1.9 0 3.1 1.5 3.1 3.4v4.1c0 1.6-1 2.7-2.4 2.9v4.9"/><circle cx="16.4" cy="7.4" r="3.2" opacity=".55"/>`,
+  headset: `<path d="M4.6 15.4v-3a7.4 7.4 0 0 1 14.8 0v3"/><rect x="2.8" y="13.4" width="4" height="6.2" rx="1.8"/><rect x="17.2" y="13.4" width="4" height="6.2" rx="1.8"/><path d="M19.2 19.6c0 1.4-1.6 2.2-3.6 2.2"/>`,
+  headphones: `<path d="M4.6 16v-3.6a7.4 7.4 0 0 1 14.8 0V16"/><rect x="2.9" y="13.6" width="3.9" height="6" rx="1.9"/><rect x="17.2" y="13.6" width="3.9" height="6" rx="1.9"/>`,
+  speaker: `<rect x="5.6" y="2.8" width="12.8" height="18.4" rx="3"/><circle cx="12" cy="15.6" r="2.9"/><circle cx="12" cy="7.9" r="1.5"/>`,
+  gamepad: `<rect x="2.5" y="7.4" width="19" height="9.4" rx="4.4"/><path d="M7.4 10.6v3.2M5.8 12.2H9"/><circle cx="16" cy="11.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="18.2" cy="13.4" r="1.05" fill="currentColor" stroke="none"/>`,
+  other: `<rect x="4.2" y="4.2" width="15.6" height="15.6" rx="4.2"/><path d="M9 12h.01M12 12h.01M15 12h.01" stroke-linecap="round" stroke-width="2"/>`,
+};
+const KIND_NAMES = {
+  mouse: "鼠标", keyboard: "键盘", combo: "键鼠套装", earbuds: "耳机",
+  headset: "耳麦", headphones: "头戴耳机", speaker: "音箱", gamepad: "手柄", other: "设备",
+};
+const ICON_ORDER = ["earbuds", "headphones", "headset", "speaker", "mouse", "combo", "keyboard", "gamepad", "other"];
+
+function icon(name, size = 24, sw = 1.55) {
+  const body = ICONS[name] || ICONS.other;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="${sw}" stroke-linejoin="round">${body}</svg>`;
+}
+
+/* ---------------- state ---------------- */
+const S = { devices: [], settings: {}, at: 0, busy: false, keyOrder: [], version: "1.0.0", autostart: false };
+const $ = (s) => document.querySelector(s);
+const el = (t, c) => { const n = document.createElement(t); if (c) n.className = c; return n; };
+const bandOf = (l) => (l == null ? "none" : l < LOW ? "low" : l <= WARN ? "warn" : "ok");
+const BAND_VAR = { ok: "var(--ok)", warn: "var(--accent)", low: "var(--danger)" };
+
+function fmtAge(sec) {
+  if (sec == null) return "未刷新";
+  if (sec < 8) return "刚刚更新";
+  if (sec < 60) return sec + " 秒前";
+  if (sec < 3600) return Math.floor(sec / 60) + " 分钟前";
+  return Math.floor(sec / 3600) + " 小时前";
+}
+function clock(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove("on"), 1900);
+}
+
+/* 窗口收起/重新弹出时把提示清干净：
+   否则窗口隐藏期间挂着的 .on 会在下次显示的第一帧闪一下。 */
+function clearToast() {
+  const t = $("#toast");
+  if (!t) return;
+  clearTimeout(toast._t);
+  t.classList.remove("on");
+  t.textContent = "";
+}
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ---------------- render ---------------- */
+function render(animate) {
+  const list = $("#list");
+  const seen = S.devices.map((d) => d.key);
+  const firstPaint = !animate || S.keyOrder.join() !== seen.join();
+
+  [...list.children].forEach((li) => {
+    if (!seen.includes(li.dataset.key)) li.remove();
+  });
+
+  S.devices.forEach((d, i) => {
+    let li = list.querySelector(`[data-key="${CSS.escape(d.key)}"]`);
+    if (!li) {
+      li = buildRow(d, i);
+      list.insertBefore(li, list.children[i] || null);
+    }
+    updateRow(li, d, firstPaint);
+    if (list.children[i] !== li) list.insertBefore(li, list.children[i] || null);
+  });
+
+  S.keyOrder = seen;
+  const online = S.devices.filter((d) => d.level != null).length;
+  const offline = S.devices.length - online;
+  animateNumber($("#cnt"), Number($("#cnt").textContent) || 0, online);
+  $("#empty").hidden = S.devices.length > 0;
+  $("#stamp").textContent = (S.at ? clock(S.at) + " 更新" : "正在扫描…")
+    + (offline > 0 ? ` · ${offline} 台未连接` : "");
+  $("#iv").textContent = S.settings.interval || 60;
+
+  // 紧凑模式标题栏里的摘要
+  const mins = S.devices.filter((d) => d.level != null).sort((a, b) => a.level - b.level)[0];
+  $("#sum").textContent = S.devices.length
+    ? (mins ? `${online}/${S.devices.length} · 最低 ${mins.level}%` : `${S.devices.length} 台离线`)
+    : "";
+  checkLow();
+  if (document.body.classList.contains("mini")) fitMini();
+}
+
+function buildRow(d, i) {
+  const li = el("li", "row");
+  li.dataset.key = d.key;
+  li.style.animationDelay = (i * 55) + "ms";
+  li.innerHTML = `
+    <button class="tile" data-act="icon" title="更换图标">${icon(d.kind, 22)}</button>
+    <div class="info">
+      <div class="name" data-act="rename" title="点击重命名">${escapeHtml(d.name)}</div>
+      <div class="meta"></div>
+    </div>
+    <button class="more" data-act="more" aria-label="更多">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/>
+      </svg>
+    </button>
+    <div class="val"><span class="num">—</span><span class="pct">%</span></div>
+    <div class="meter"><i></i></div>`;
+  return li;
+}
+
+function updateRow(li, d, animate) {
+  const tile = li.querySelector(".tile");
+  if (tile.dataset.kind !== d.kind) {
+    tile.dataset.kind = d.kind;
+    tile.innerHTML = icon(d.kind, 22);
+  }
+  const nameEl = li.querySelector(".name");
+  if (!nameEl.classList.contains("editing") && nameEl.textContent !== d.name) {
+    nameEl.textContent = d.name;
+  }
+
+  const band = bandOf(d.level);
+  const meta = li.querySelector(".meta");
+  const parts = [`<span>${KIND_NAMES[d.kind] || "设备"}</span>`, `<i class="dot"></i>`];
+  if (d.level != null && d.charging) {
+    parts.push(`<span class="chg">充电中</span>`);
+  } else if (d.connected === false) {
+    const tail = d.last_level != null ? ` · 上次 ${d.last_level}%` : "";
+    parts.push(`<span class="warn">未连接${tail}</span>`);
+  } else if (d.level == null) {
+    parts.push(`<span>${escapeHtml(d.error || "等待上报")}</span>`);
+  } else if (d.extra && d.extra.asleep) {
+    parts.push(`<span>休眠 · ${fmtAge(d.age)}</span>`);
+  } else {
+    parts.push(`<span>${fmtAge(d.age)}</span>`);
+  }
+  if (d.link === "bluetooth") parts.push(`<i class="dot"></i><span>蓝牙</span>`);
+  else if (d.link === "2.4g") parts.push(`<i class="dot"></i><span>2.4G · ${escapeHtml(d.vid_pid)}</span>`);
+  const html = parts.join("");
+  if (meta.innerHTML !== html) meta.innerHTML = html;
+
+  const val = li.querySelector(".val");
+  const num = val.querySelector(".num");
+  val.dataset.band = band;
+  tile.classList.toggle("live", d.level != null);
+  li.classList.toggle("off", d.connected === false);
+  li.classList.toggle("none", d.level == null);
+  li.dataset.chg = d.charging ? "1" : "0";
+  li.style.setProperty("--band", BAND_VAR[band] || "transparent");
+
+  if (d.level == null) {
+    num.textContent = "—";
+    val.querySelector(".pct").textContent = "";
+  } else {
+    const prev = parseInt(num.textContent, 10);
+    if (animate || isNaN(prev)) num.textContent = d.level;
+    else if (prev !== d.level) animateNumber(num, prev, d.level, 620);
+    val.querySelector(".pct").textContent = "%";
+  }
+  const bar = li.querySelector(".meter i");
+  requestAnimationFrame(() => {
+    bar.style.width = (d.level == null ? 0 : Math.max(2, Math.min(100, d.level))) + "%";
+  });
+}
+
+function animateNumber(node, from, to, dur = 480) {
+  const t0 = performance.now();
+  function step(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    node.textContent = Math.round(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------------- 低电量预警 ---------------- */
+// file:// 下 localStorage 可能被拒，包一层，坏了大不了每次开窗提醒一次
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+
+function checkLow() {
+  // 电量回到 10% 以上就重新武装，下次再跌破还会提醒
+  S.devices.forEach((d) => {
+    if (d.level != null && d.level >= LOW) LS.del("echo.alarm." + d.key);
+  });
+  const low = S.devices.filter((d) => d.level != null && d.level < LOW && d.connected !== false);
+  const fresh = low.filter((d) => !LS.get("echo.alarm." + d.key));
+  if (!fresh.length) return;
+  fresh.forEach((d) => LS.set("echo.alarm." + d.key, String(Date.now())));
+  showAlert(fresh);
+}
+
+let alertTimer = null;
+function showAlert(devs) {
+  $("#alert-text").textContent = devs.map((d) => `${d.name} ${d.level}%`).join(" · ")
+    + "，该充电了。";
+  $("#alert").classList.add("on");
+  clearTimeout(alertTimer);
+  alertTimer = setTimeout(hideAlert, 15000);
+}
+function hideAlert() {
+  $("#alert").classList.remove("on");
+  clearTimeout(alertTimer);
+}
+$("#alert-ok").onclick = hideAlert;
+
+/* ---------------- 紧凑模式 ---------------- */
+function miniHeight() {
+  const rows = Math.max(1, S.devices.length);
+  return 44 + rows * 39 + 10;
+}
+let lastMiniH = 0;
+async function fitMini() {
+  const api = API();
+  if (!api) return;
+  const h = miniHeight();
+  if (h === lastMiniH) return;          // 高度没变就别折腾窗口，否则界面会跳
+  lastMiniH = h;
+  await api.set_mode(true, h);
+}
+async function setMini(on) {
+  const api = API();
+  if (on && sheet.open) closeSheet();   // 紧凑模式下不留在设置里
+  document.body.classList.toggle("mini", on);
+  if (!on) $("#mtip").classList.remove("on");
+  lastMiniH = 0;
+  if (api) await api.set_mode(on, miniHeight());
+}
+$("#btn-compact").onclick = () => setMini(!document.body.classList.contains("mini"));
+
+// 紧凑模式：悬停显示这台设备的完整信息
+const mtip = $("#mtip");
+document.addEventListener("mouseover", (e) => {
+  if (!document.body.classList.contains("mini")) return;
+  const row = e.target.closest(".row");
+  if (!row) { mtip.classList.remove("on"); return; }
+  const d = S.devices.find((x) => x.key === row.dataset.key);
+  if (!d) return;
+  const tail = d.level == null
+    ? (d.last_level != null ? `上次 ${d.last_level}%` : "无读数")
+    : (d.charging ? "充电中" : "放电中");
+  mtip.innerHTML = `<b>${escapeHtml(d.name)}</b>
+    <div><span class="k">电量</span> <em>${d.level == null ? "—" : d.level + "%"}</em> · ${tail}</div>
+    <div><span class="k">链路</span> ${d.link === "2.4g" ? "2.4G · " + escapeHtml(d.vid_pid) : "蓝牙"} · ${KIND_NAMES[d.kind] || "设备"}</div>
+    <div><span class="k">更新</span> ${fmtAge(d.age)}${d.connected === false ? " · 未连接" : ""}</div>`;
+  const r = row.getBoundingClientRect();
+  mtip.classList.add("on");
+  const w = mtip.offsetWidth, h = mtip.offsetHeight;
+  mtip.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + "px";
+  mtip.style.top = (r.bottom + h + 8 > window.innerHeight ? r.top - h - 6 : r.bottom + 6) + "px";
+});
+document.addEventListener("mouseleave", () => mtip.classList.remove("on"));
+
+/* ---------------- 数据 ---------------- */
+function apply(state) {
+  if (!state) return;
+  S.devices = state.devices || [];
+  S.settings = state.settings || {};
+  S.at = state.at || 0;
+  S.version = state.version || "1.0.0";
+  S.autostart = !!state.autostart;
+  document.documentElement.dataset.theme = S.settings.theme || "dark";
+  render(true);
+  if (sheet.open) renderSheet();
+}
+
+async function pull(force) {
+  const api = API();
+  if (!api || S.busy) return;
+  S.busy = true;
+  document.body.classList.add("busy");
+  try {
+    apply(force ? await api.refresh() : await api.state(false));
+  } catch (e) {
+    console.error(e);
+  } finally {
+    S.busy = false;
+    document.body.classList.remove("busy");
+  }
+}
+window.Echo = { pull: () => pull(true) };
+
+/* ---------------- 行内交互 ---------------- */
+document.addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  const d = S.devices.find((x) => x.key === row.dataset.key);
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (!d || !act) return;
+  if (act === "icon") openIconPicker(d, row.querySelector(".tile"));
+  else if (act === "more") {
+    if (Date.now() - moreJustDragged < 350) return;
+    openMenu(d, row.querySelector(".more"));
+  }
+  else if (act === "rename") startRename(d, row);
+});
+
+function startRename(d, row) {
+  const node = row.querySelector(".name");
+  const original = d.name;
+  node.classList.add("editing");
+  node.contentEditable = "true";
+  node.textContent = d.name;
+  node.focus();
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  const finish = async (commit) => {
+    if (!node.classList.contains("editing")) return;
+    node.classList.remove("editing");
+    node.contentEditable = "false";
+    const value = node.textContent.trim().slice(0, 32);
+    if (!commit || !value || value === original) {
+      node.textContent = original;
+      return;
+    }
+    const api = API();
+    if (api) apply(await api.set_name(d.key, value));
+    toast("已改名");
+  };
+  node.onblur = () => finish(true);
+  node.onkeydown = (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); node.blur(); }
+    if (ev.key === "Escape") { ev.preventDefault(); node.textContent = original; node.blur(); }
+  };
+}
+
+/* ---------------- 弹出层 ---------------- */
+const POP = { node: null, closer: null };
+
+function placePop(node, anchor, align) {
+  const pad = 10;
+  const r = anchor.getBoundingClientRect();
+  node.classList.add("on");
+  const w = node.offsetWidth, h = node.offsetHeight;
+  let x = align === "right" ? r.right - w : r.left;
+  let y = r.bottom + 8;
+  if (y + h > window.innerHeight - pad) y = r.top - h - 8;
+  x = Math.max(pad, Math.min(x, window.innerWidth - w - pad));
+  node.style.left = x + "px";
+  node.style.top = y + "px";
+  node.style.setProperty("--ox", (align === "right" ? 88 : 12) + "%");
+  node.style.setProperty("--oy", y < r.top ? "100%" : "0%");
+}
+
+function closePop() {
+  if (!POP.node) return;
+  POP.node.classList.remove("on");
+  POP.node.innerHTML = "";
+  POP.node = null;
+  document.removeEventListener("mousedown", POP.closer, true);
+}
+
+function showPop(node, anchor, align) {
+  closePop();
+  const pop = $("#pop");
+  pop.className = "pop " + node.cls;
+  pop.innerHTML = node.html;
+  POP.node = pop;
+  POP.closer = (ev) => {
+    if (!pop.contains(ev.target) && !anchor.contains(ev.target)) closePop();
+  };
+  document.addEventListener("mousedown", POP.closer, true);
+  placePop(pop, anchor, align);
+  return pop;
+}
+
+function openIconPicker(d, anchor) {
+  const grid = ICON_ORDER.map((k) =>
+    `<button data-pick="${k}" data-on="${k === d.kind ? 1 : 0}">
+       ${icon(k, 22)}<span>${KIND_NAMES[k]}</span>
+     </button>`).join("");
+  const pop = showPop({ cls: "icons", html: `<div class="grid">${grid}</div>` }, anchor, "left");
+  pop.onclick = async (e) => {
+    const k = e.target.closest("[data-pick]")?.dataset.pick;
+    if (!k) return;
+    pop.querySelectorAll("[data-pick]").forEach((b) =>
+      b.dataset.on = b.dataset.pick === k ? "1" : "0");
+    const api = API();
+    if (api) apply(await api.set_icon(d.key, k));
+    setTimeout(closePop, 120);
+  };
+}
+
+function openMenu(d, anchor) {
+  const html = `
+    <button data-m="rename">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4.5 19.5h3.2l9.6-9.6a2.2 2.2 0 0 0-3.2-3.2l-9.6 9.6v3.2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      重命名</button>
+    <button data-m="icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.6"/></svg>
+      换个图标</button>
+    <button data-m="diag">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/><path d="M12 8.4v4.2M12 15.4v.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      读取方式</button>
+    <button data-m="reset" class="danger">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      恢复默认</button>`;
+  const pop = showPop({ cls: "menu", html }, anchor, "right");
+  pop.onclick = async (e) => {
+    const m = e.target.closest("[data-m]")?.dataset.m;
+    if (!m) return;
+    closePop();
+    const api = API();
+    if (m === "rename") startRename(d, document.querySelector(`[data-key="${CSS.escape(d.key)}"]`));
+    if (m === "icon") openIconPicker(d, document.querySelector(`[data-key="${CSS.escape(d.key)}"] .tile`));
+    if (m === "diag") { sheet.device = d; openSheet("diag"); }
+    if (m === "reset" && api) { apply(await api.reset_device(d.key)); toast("已恢复默认"); }
+  };
+}
+
+/* ---------------- 设置 / 诊断面板 ---------------- */
+const sheet = { open: false, mode: "settings", device: null };
+
+function openSheet(mode) {
+  sheet.open = true;
+  sheet.mode = mode || "settings";
+  renderSheet();
+  $("#sheet").classList.add("on");
+  $("#sheet").setAttribute("aria-hidden", "false");
+  $("#scrim").classList.add("on");
+}
+function closeSheet() {
+  sheet.open = false;
+  $("#sheet").classList.remove("on");
+  $("#sheet").setAttribute("aria-hidden", "true");
+  $("#scrim").classList.remove("on");
+}
+function renderSheet() {
+  if (sheet.mode === "settings") renderSettings();
+  else if (sheet.mode === "diag") renderDiag();
+}
+
+function switchHtml(on, key) {
+  return `<button class="sw" role="switch" aria-checked="${on ? "true" : "false"}" data-sw="${key}"></button>`;
+}
+
+function renderSettings() {
+  const s = S.settings || {};
+  const iv = s.interval || 60;
+  const segs = [[30, "30 秒"], [60, "1 分"], [300, "5 分"], [900, "15 分"]];
+  $("#sheet-title").textContent = "设置";
+  $("#sheet-body").innerHTML = `
+    <div class="group">
+      <h4>常规</h4>
+      <div class="item">
+        <div><div class="t">开机自动启动</div>
+          <div class="d">登录 Windows 后静默进入托盘，不弹窗。</div></div>
+        ${switchHtml(!!S.autostart, "autostart")}
+      </div>
+      <div class="item">
+        <div><div class="t">关闭窗口时留在托盘</div>
+          <div class="d">关掉窗口只是收起 Echo，托盘图标继续刷新电量。</div></div>
+        ${switchHtml(s.minimize_to_tray !== false, "minimize_to_tray")}
+      </div>
+    </div>
+    <div class="group">
+      <h4>刷新</h4>
+      <div class="item">
+        <div><div class="t">自动刷新间隔</div>
+          <div class="d">越短越及时，也越费电。蓝牙电量通常几分钟才变一次。</div></div>
+        <div class="seg" id="seg">${segs.map(([v, l]) =>
+          `<button data-iv="${v}" data-on="${v === iv ? 1 : 0}">${l}</button>`).join("")}<i></i></div>
+      </div>
+    </div>
+    <div class="group">
+      <h4>2.4G 探测</h4>
+      <div class="item">
+        <div><div class="t">读不到的设备，看原始帧</div>
+          <div class="d">抓 8 秒所有 HID 输入报告，列出十六进制原样与可疑电量字节。
+            连同 <code>docs/AGENT.md</code> 一起复制，粘给任意 Agent 就能补一套协议。</div></div>
+      </div>
+      <div class="row-btns">
+        <button class="btn primary" id="btn-sniff">嗅探 8 秒</button>
+        <button class="btn" id="btn-brief">复制给 Agent 的说明</button>
+      </div>
+      <div id="sniff-out"></div>
+    </div>
+    <div class="group">
+      <h4>外观</h4>
+      <div class="item">
+        <div><div class="t">主题</div></div>
+        <div class="seg" id="seg-theme">
+          <button data-th="dark" data-on="${(s.theme || "dark") === "dark" ? 1 : 0}">深色</button>
+          <button data-th="light" data-on="${s.theme === "light" ? 1 : 0}">浅色</button><i></i>
+        </div>
+      </div>
+    </div>
+    <div class="group">
+      <h4>关于</h4>
+      <div class="item act" data-do="data">
+        <div><div class="t">配置文件夹</div>
+          <div class="d">改名、换图标和自定义协议都保存在这里。</div></div>
+        <span class="foot-note">打开</span>
+      </div>
+      <div class="item act" data-do="quit">
+        <div><div class="t">退出 Echo</div>
+          <div class="d">同时移除托盘图标。</div></div>
+        <span class="foot-note">退出</span>
+      </div>
+      <div class="item">
+        <div><div class="t">版本</div></div>
+        <span class="foot-note">${S.version || "1.0.0"}</span>
+      </div>
+    </div>`;
+  positionSegs();
+}
+
+function positionSegs() {
+  document.querySelectorAll(".seg").forEach((seg) => {
+    const on = seg.querySelector('[data-on="1"]');
+    const ind = seg.querySelector("i");
+    if (!on || !ind) return;
+    ind.style.width = on.offsetWidth + "px";
+    ind.style.transform = `translateX(${on.offsetLeft - 2}px)`;
+  });
+}
+
+function renderDiag() {
+  const d = sheet.device;
+  $("#sheet-title").textContent = "读取方式";
+  if (!d) return;
+  if (d.link === "bluetooth") {
+    $("#sheet-body").innerHTML = `
+      <div class="diag">
+        <dl class="kv">
+          <dt>设备</dt><dd>${escapeHtml(d.name)}</dd>
+          <dt>类型</dt><dd>蓝牙 · ${KIND_NAMES[d.kind] || "设备"}</dd>
+          <dt>地址</dt><dd>${escapeHtml(d.vid_pid)}</dd>
+          <dt>电量</dt><dd>${d.level == null ? "未上报" : d.level + "%"}</dd>
+        </dl>
+        <div class="note">
+          蓝牙设备的电量由 Windows 蓝牙栈接收。耳机/音箱通过 HFP 的 AT+XAPL 上报，
+          Echo 从系统设备属性（未公开的 {104EA319-…} 第 2 项）里把它读出来，
+          不联网、不接管音频通道。<br><br>
+          读数为 0 或空缺，说明设备没有连接，或者这副耳机固件根本不上报电量 ——
+          这种设备在系统「设置 → 蓝牙和设备」里同样看不到百分比。
+        </div>
+      </div>`;
+    return;
+  }
+  $("#sheet-body").innerHTML = `<div class="diag"><div class="log">正在读取设备协议…</div></div>`;
+  const api = API();
+  if (!api) return;
+  api.probe(d.key).then((info) => {
+    if (!info || !info.ok) {
+      $("#sheet-body").innerHTML =
+        `<div class="diag"><div class="log">${escapeHtml(info?.reason || "读取失败")}</div></div>`;
+      return;
+    }
+    const ifaces = (info.interfaces || [])
+      .map((i) => `${i.usage}  入 ${i.in} · 出 ${i.out} · 特性 ${i.feat}`).join("\n");
+    const foot = `
+      <div class="row-btns" style="padding:14px 0 0">
+        <button class="btn primary" id="btn-copy-diag">复制排查资料给 AI</button>
+      </div>`;
+
+    if (info.mode === "push") {
+      $("#sheet-body").innerHTML = `
+        <div class="diag">
+          <dl class="kv">
+            <dt>设备</dt><dd>${escapeHtml(d.name)}</dd>
+            <dt>VID:PID</dt><dd>${escapeHtml(info.vid_pid)}${info.manufacturer ? " · " + escapeHtml(info.manufacturer) : ""}</dd>
+            <dt>方式</dt><dd>设备主动上报</dd>
+            <dt>上报帧</dt><dd>${escapeHtml(info.frame)}</dd>
+            <dt>解析</dt><dd>电量 ${info.level}%${info.charging ? " · 充电中" : ""} · ${info.age} 秒前</dd>
+          </dl>
+          <div class="log">${escapeHtml(ifaces)}</div>
+          <div class="note">
+            这个接收器不回答查询，而是让设备每 2 秒自己推一包
+            <code>03 型号 40/41 充电 电量</code>。Echo 一直在后台监听这包，
+            收到就更新，超过 8 秒没有新帧就标成休眠 —— 但保留最后一次读数，
+            因为它通常仍然准确。
+          </div>${foot}
+        </div>`;
+      $("#btn-copy-diag").onclick = () => copyForAI({ device: d, probe: info });
+      return;
+    }
+
+    const rows = (info.attempts || []).map((a) => {
+      const rep = a.error ? "发送失败 " + a.error
+        : a.count ? a.replies.map((r) => "  ← " + r.slice(0, 56)).join("\n") : "  ← 无回复";
+      return `${a.label}\n  → ${a.sent}\n${rep}`;
+    }).join("\n\n");
+    $("#sheet-body").innerHTML = `
+      <div class="diag">
+        <dl class="kv">
+          <dt>设备</dt><dd>${escapeHtml(d.name)}</dd>
+          <dt>VID:PID</dt><dd>${escapeHtml(info.vid_pid)}</dd>
+          <dt>厂商</dt><dd>${escapeHtml(info.manufacturer || "—")}</dd>
+          <dt>接口</dt><dd>${escapeHtml(info.usage || "—")}</dd>
+          <dt>报文长度</dt><dd>入 ${info.in_len ?? "—"} · 出 ${info.out_len ?? "—"} · 特性 ${info.feature_len ?? "—"}</dd>
+        </dl>
+        <div class="log">${escapeHtml(rows || "没有任何查询帧被接受")}</div>
+        <div class="note">
+          2.4G 接收器没有统一标准。Echo 内置了罗技 HID++、ATK/VXE、VAXEE、
+          Endgame、Nordic、杰理，以及英菲克这类主动上报的协议。都不匹配时，
+          上面这些探测帧就是最后的手段 —— 如果某个回复里出现了 1–100 之间的
+          稳定字节，把它记下来就能补一套协议。
+        </div>${foot}
+      </div>`;
+    $("#btn-copy-diag").onclick = () => copyForAI({ device: d, probe: info });
+  });
+}
+
+let LAST_SNIFF = null;
+
+/* 把"这个软件怎么工作 + 这台机器的现场数据"打包成一段可粘贴的说明 */
+async function copyForAI(payload) {
+  const api = API();
+  if (!api) return;
+  let brief = "";
+  try { brief = await api.brief(); } catch (e) { brief = ""; }
+  const text = [
+    "# 任务：帮我把这台 2.4G 接收器的电量接进 Echo",
+    "",
+    "下面是 Echo 的工作原理（docs/AGENT.md）和本机实测数据。请直接产出结果：",
+    "1. 判断它属于「标准 HID 电量 / 厂商查询协议 / 主动上报」哪一类，并说明依据；",
+    "2. 给出**可直接写入** %APPDATA%\\Echo\\protocols.json 的完整 JSON 条目；",
+    "   若必须改代码，给出 pushmon.parse_frame() 或 protocols.BUILTIN 的最小 diff；",
+    "3. 数据不够就明说缺什么，并告诉我下一步该做什么（插拔 / 充电 / 按哪个键）；",
+    "4. 不确定就说不确定，不要给一个能跑但会显示错数字的方案。",
+    "",
+    "---",
+    "",
+    brief || "（说明书缺失，请只看下面的现场数据）",
+    "",
+    "---",
+    "",
+    "## 现场数据（本机实测 JSON）",
+    "```json",
+    JSON.stringify(payload, null, 2),
+    "```",
+    "",
+  ].join("\n");
+  await api.copy_text(text);
+  toast("已复制");
+}
+
+/* ---------------- 事件 ---------------- */
+$("#btn-refresh").onclick = async (e) => {
+  e.currentTarget.classList.add("spin");
+  setTimeout(() => e.currentTarget.classList.remove("spin"), 720);
+  await pull(true);
+};
+$("#btn-min").onclick = () => { clearToast(); API()?.hide_window(); };
+$("#btn-close").onclick = async () => {
+  API()?.save_geom();
+  if (S.settings.minimize_to_tray === false) { API()?.quit_app(); return; }
+  clearToast();
+  API()?.hide_window();
+};
+$("#btn-settings").onclick = () => openSheet("settings");
+$("#sheet-close").onclick = closeSheet;
+$("#scrim").onclick = closeSheet;
+$("#btn-rescan").onclick = () => pull(true);
+
+$("#sheet-body").addEventListener("click", async (e) => {
+  const api = API();
+  const sw = e.target.closest("[data-sw]");
+  if (sw && api) {
+    const key = sw.dataset.sw;
+    const next = sw.getAttribute("aria-checked") !== "true";
+    sw.setAttribute("aria-checked", next ? "true" : "false");
+    if (key === "autostart") {
+      const res = await api.set_setting("autostart", next);
+      apply(res.state);
+      if (!res.ok) toast("写注册表被拒绝，请用管理员权限重试");
+      else toast(next ? "开机后会静默启动" : "已取消开机启动");
+    } else if (key === "mini") {
+      await setMini(next);
+      apply(await api.state(false));
+    } else {
+      apply(await api.set_setting(key, next));
+    }
+    return;
+  }
+  const ivBtn = e.target.closest("[data-iv]");
+  if (ivBtn && api) {
+    const v = Number(ivBtn.dataset.iv);
+    document.querySelectorAll("[data-iv]").forEach((b) => b.dataset.on = "0");
+    ivBtn.dataset.on = "1";
+    positionSegs();
+    apply(await api.set_setting("interval", v));
+    toast("每 " + (v < 60 ? v + " 秒" : (v / 60) + " 分钟") + "刷新一次");
+    return;
+  }
+  const thBtn = e.target.closest("[data-th]");
+  if (thBtn && api) {
+    document.querySelectorAll("[data-th]").forEach((b) => b.dataset.on = "0");
+    thBtn.dataset.on = "1";
+    positionSegs();
+    apply(await api.set_setting("theme", thBtn.dataset.th));
+    return;
+  }
+  if (e.target.closest("#btn-sniff")) {
+    const out = $("#sniff-out");
+    out.innerHTML = `<div class="log">正在抓 8 秒原始帧…（期间别关窗口）</div>`;
+    LAST_SNIFF = await api.sniff(8);
+    out.innerHTML = sniffHtml(LAST_SNIFF);
+    return;
+  }
+  if (e.target.closest("#btn-copy-sniff")) {
+    await copyForAI({ sniff: LAST_SNIFF });
+    return;
+  }
+  if (e.target.closest("#btn-brief")) {
+    await copyForAI({ note: "只复制说明书，没有现场数据" });
+    return;
+  }
+  const doIt = e.target.closest("[data-do]")?.dataset.do;
+  if (doIt === "data") api?.open_data_dir();
+  if (doIt === "quit") api?.quit_app();
+});
+
+function sniffHtml(res) {
+  if (!res || res.error) return `<div class="log">${escapeHtml(res?.error || "嗅探失败")}</div>`;
+  const blocks = (res.interfaces || []).filter((i) => i.frames.length || i.error)
+    .map((i) => {
+      const head = `${i.vid_pid}  ${i.usage}  入${i.in_len}B  ${i.name}`;
+      const frames = i.frames.map((f) => `  ${f.hex}   ×${f.count}`).join("\n");
+      const cand = (i.battery || []).length
+        ? "\n  <b>可疑字节</b> " + i.battery.map((b) => `[${b.byte}]=${b.values.join("/")}`).join("  ")
+        : "";
+      const push = i.push ? `\n  <b>命中主动上报</b> 电量 ${i.push.level}%` : "";
+      return `${head}\n${frames || "  （没有读到任何报告）"}${push}${cand}`;
+    });
+  const body = blocks.length ? blocks.join("\n\n") : "这 8 秒里没有任何接口送数据。";
+  return `<div class="log">${body}</div>
+    <div class="note">
+      抓到帧却认不出电量时，点上面「复制给 Agent 的说明」——
+      说明书里写了帧格式、现有协议表和补协议的方法，AI 能直接接着改。
+    </div>
+    <div class="row-btns" style="padding:10px 0 0">
+      <button class="btn" id="btn-copy-sniff">复制嗅探结果给 AI</button>
+    </div>`;
+}
+
+/* 缩放：按下热区 → 交回系统
+   坐标必须一起传下去，否则系统算错抓手点，开头会跳。 */
+let resizing = false;
+let resizeTimer = 0;
+
+document.querySelectorAll(".rz").forEach((h) => {
+  h.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;          // 不再用 resizing 当闸门：
+    e.preventDefault();                   // 上一版它一旦卡住，边框就再也拖不动了
+    resizing = true;
+    document.body.classList.add("resizing");
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(endResize, 8000);   // 兜底：万一收尾信号全丢
+    API()?.start_resize(h.dataset.edge, Math.round(e.screenX), Math.round(e.screenY));
+  });
+});
+
+function endResize() {
+  clearTimeout(resizeTimer);
+  if (!resizing) return;
+  resizing = false;
+  document.body.classList.remove("resizing");
+  setTimeout(() => API()?.save_geom(), 160);
+}
+
+document.addEventListener("mouseup", endResize);
+window.addEventListener("blur", endResize);
+document.addEventListener("mouseleave", endResize);
+/* 系统缩放循环会吃掉 mouseup，但松手后一动鼠标 buttons 就是 0，据此收尾 */
+document.addEventListener("mousemove", (e) => { if (resizing && e.buttons === 0) endResize(); });
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (POP.node) closePop();
+    else if (sheet.open) closeSheet();
+    else hideAlert();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r") { e.preventDefault(); pull(true); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+    e.preventDefault();
+    document.body.classList.contains("mini") ? setMini(false) : API()?.hide_window();
+  }
+});
+
+/* 拖动窗口：把"按下"交给 Python，由它跟鼠标 SetWindowPos 直到松手
+   （无边框窗口上 WM_NCLBUTTONDOWN/HTCAPTION 那套不灵，实测不动） */
+const barEl = $(".bar");
+barEl.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || e.target.closest("button")) return;
+  e.preventDefault();
+  document.body.classList.add("dragging");
+  API()?.start_drag(Math.round(e.screenX), Math.round(e.screenY));
+});
+document.addEventListener("mouseup", () => document.body.classList.remove("dragging"));
+window.addEventListener("blur", () => document.body.classList.remove("dragging"));
+window.addEventListener("focus", clearToast);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) clearToast();
+});
+
+/* ---------------- 拖动排序（按住三点手柄） ---------------- */
+let sort = null;
+let moreJustDragged = 0;
+
+$("#list").addEventListener("mousedown", (e) => {
+  const btn = e.target.closest(".more");
+  if (!btn || e.button !== 0) return;
+  const row = btn.closest(".row");
+  if (!row) return;
+  sort = { key: row.dataset.key, row, x: e.clientX, y: e.clientY, moved: false };
+  e.preventDefault();
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!sort) return;
+  if (!sort.moved) {
+    if (Math.abs(e.clientX - sort.x) < 4 && Math.abs(e.clientY - sort.y) < 4) return;
+    sort.moved = true;
+    sort.row.classList.add("dragging");
+    document.body.classList.add("dragging-row");
+  }
+  const drag = sort.row;
+  drag.style.visibility = "hidden";          // 让指针看穿自己
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  drag.style.visibility = "";
+  const over = under && under.closest && under.closest(".row");
+  if (!over || over === drag) return;
+  const r = over.getBoundingClientRect();
+  $("#list").insertBefore(drag, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
+});
+
+function endSort() {
+  if (!sort) return;
+  const s = sort;
+  sort = null;
+  s.row.classList.remove("dragging");
+  document.body.classList.remove("dragging-row");
+  if (!s.moved) return;                     // 没动 = 当点击，交给 click 开菜单
+  moreJustDragged = Date.now();
+  const keys = [...$("#list").children].map((li) => li.dataset.key);
+  S.keyOrder = keys;
+  const api = API();
+  if (api) api.set_order(keys).then((st) => { if (st) apply(st); });
+  toast("顺序已保存");
+}
+document.addEventListener("mouseup", endSort);
+
+window.addEventListener("resize", () => {
+  closePop();
+  positionSegs();
+  mtip.classList.remove("on");
+});
+
+/* ---------------- 启动 ---------------- */
+let timer = null;
+function schedulePoll() {
+  clearInterval(timer);
+  timer = setInterval(() => pull(false), 4000);   // 只读缓存，几乎不花 CPU
+}
+
+const boot = async () => {
+  const api = API();
+  if (!api) return;
+  apply(await api.state(true));
+  if (S.settings.mini) {
+    document.body.classList.add("mini");
+    fitMini();
+  }
+  schedulePoll();
+};
+
+if (window.pywebview && window.pywebview.api) boot();
+else window.addEventListener("pywebviewready", boot);
+</script>
+</body>
+</html>

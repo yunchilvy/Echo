@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Echo · 一屏看清所有无线设备的电量</title>
+<meta name="description" content="Echo 把蓝牙耳机、蓝牙音箱、2.4G 鼠标键盘的电量收进一屏。不联网、不接管音频通道、读不到就显示「—」。Windows 10/11，开源。" />
+<style>
+:root{
+  --bg:#0b0b0c; --surface:#121213; --surface-2:#171718; --surface-3:#1d1d1f;
+  --line:rgba(255,255,255,.065); --line-strong:rgba(255,255,255,.11);
+  --text:#f4f1ec; --text-2:#918d86; --text-3:#5d5a55;
+  --accent:#e5b36a; --accent-soft:rgba(229,179,106,.12);
+  --ok:#6fca9f; --ok-soft:rgba(111,202,159,.13);
+  --danger:#e8705f; --danger-soft:rgba(232,112,95,.14);
+  --tile:rgba(255,255,255,.045); --tile-hover:rgba(255,255,255,.075);
+  --shadow:0 18px 60px -12px rgba(0,0,0,.7);
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --snap:cubic-bezier(.34,1.4,.64,1);
+  --page-grad:radial-gradient(120% 70% at 50% -10%,rgba(229,179,106,.07),transparent 60%);
+}
+html[data-theme="light"]{
+  --bg:#f7f5f1; --surface:#fffefb; --surface-2:#f1eee8; --surface-3:#eae6df;
+  --line:rgba(20,18,14,.09); --line-strong:rgba(20,18,14,.16);
+  --text:#171614; --text-2:#6f6a62; --text-3:#a29c93;
+  --accent:#b0721a; --accent-soft:rgba(176,114,26,.11);
+  --ok:#2f8f68; --ok-soft:rgba(47,143,104,.12);
+  --danger:#c5503c; --danger-soft:rgba(197,80,60,.1);
+  --tile:rgba(20,18,14,.045); --tile-hover:rgba(20,18,14,.075);
+  --shadow:0 18px 50px -14px rgba(60,50,35,.28);
+  --page-grad:radial-gradient(120% 70% at 50% -10%,rgba(176,114,26,.06),transparent 60%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC","Hiragino Sans GB",system-ui,-apple-system,sans-serif;
+  font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;
+  background-image:var(--page-grad);background-repeat:no-repeat;
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+code{font-family:"Cascadia Code",Consolas,"SF Mono",monospace;font-size:.9em}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+.mono{font-variant-numeric:tabular-nums}
+
+/* ================= nav ================= */
+nav{position:sticky;top:0;z-index:60;backdrop-filter:blur(18px);
+  background:color-mix(in srgb,var(--bg) 78%,transparent);border-bottom:1px solid var(--line)}
+nav .in{max-width:1060px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:14px}
+nav .mark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;
+  text-transform:lowercase;font-size:13px;color:var(--text)}
+nav .links{margin-left:auto;display:flex;gap:26px;font-size:13.5px;color:var(--text-2)}
+nav .links a:hover{color:var(--text)}
+nav .ghost{border:1px solid var(--line-strong);border-radius:999px;padding:7px 15px;font-size:13px;
+  color:var(--text);transition:.18s var(--ease-out)}
+nav .ghost:hover{background:var(--tile-hover);border-color:var(--text-3)}
+@media(max-width:760px){nav .links{display:none}}
+
+/* ================= hero ================= */
+header.hero{padding:80px 0 26px;text-align:center}
+.hero .icon{width:96px;height:96px;margin:0 auto 26px;display:block;
+  filter:drop-shadow(0 12px 34px rgba(229,179,106,.25))}
+h1{font-size:clamp(46px,7vw,72px);font-weight:600;letter-spacing:-.035em;line-height:1;
+  margin-bottom:20px}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{font-size:clamp(16px,2.2vw,20px);color:var(--text-2);max-width:640px;margin:0 auto;
+  line-height:1.72;letter-spacing:.005em}
+.lede b{color:var(--text);font-weight:500}
+.sub{margin-top:12px;font-size:13px;color:var(--text-3);letter-spacing:.02em}
+.cta{display:flex;gap:12px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:12px 24px;border-radius:12px;
+  font-size:14.5px;font-weight:500;transition:.2s var(--ease-out);border:1px solid transparent}
+.btn.primary{background:var(--accent);color:#20180c;box-shadow:0 10px 30px -10px rgba(229,179,106,.55)}
+html[data-theme="light"] .btn.primary{color:#fffaf1}
+.btn.primary:hover{transform:translateY(-1px);box-shadow:0 14px 36px -10px rgba(229,179,106,.7)}
+.btn.second{border-color:var(--line-strong);color:var(--text)}
+.btn.second:hover{background:var(--tile-hover)}
+.pillrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.pill{font-size:12px;color:var(--text-2);border:1px solid var(--line);
+  border-radius:999px;padding:5px 12px;background:var(--tile)}
+
+/* ================= demo stage ================= */
+.stage{margin-top:54px;border:1px solid var(--line);border-radius:22px;overflow:hidden;
+  background:
+    linear-gradient(color-mix(in srgb,var(--surface) 92%,transparent),color-mix(in srgb,var(--bg) 96%,transparent)),
+    repeating-linear-gradient(0deg,transparent 0 27px,var(--line) 27px 28px),
+    repeating-linear-gradient(90deg,transparent 0 27px,var(--line) 27px 28px);
+  position:relative;min-height:560px;user-select:none;touch-action:none}
+.stage-head{display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border-bottom:1px solid var(--line);font-size:12px;color:var(--text-3);
+  background:color-mix(in srgb,var(--surface) 88%,transparent)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
+  box-shadow:0 0 0 3px var(--ok-soft)}
+.stage-head .hint{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap}
+.stage-head .hint b{color:var(--text-2);font-weight:500}
+.stage-body{position:relative;height:520px;overflow:hidden}
+@media(max-width:820px){.stage-body{height:600px}}
+
+/* ---- echo window ---- */
+.win{position:absolute;left:50%;top:44px;transform:translateX(-50%);
+  width:380px;height:392px;background:var(--surface);border:1px solid var(--line-strong);
+  border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;
+  overflow:hidden;transition:box-shadow .3s var(--ease-out),border-color .3s}
+html[data-theme="dark"] .win{background:linear-gradient(180deg,#141415,#101011)}
+.win::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:14px;
+  background:radial-gradient(120% 62% at 50% -18%,rgba(229,179,106,.055),transparent 62%)}
+.win.dragging{box-shadow:0 26px 80px -14px rgba(0,0,0,.85);border-color:var(--accent)}
+.win.compact{width:268px!important;height:auto!important;min-height:0;border-radius:12px}
+.win.compact .body,.win.compact .bar .sum,.win.compact .bar .brand b{display:none}
+.win.compact .bar{height:40px;padding:0 6px 0 14px}
+.win.compact .cbody{display:flex}
+.win .cbody{display:none;flex-direction:column;padding:2px 6px 8px}
+
+.bar{height:44px;flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 6px 0 14px;position:relative;z-index:2}
+.brand{display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:grab}
+.brand:active{cursor:grabbing}
+.brand b{font-weight:500;font-size:12.5px;letter-spacing:.14em;color:var(--text-2)}
+.brand .sum{font-size:11.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.bar-actions{display:flex;gap:1px;flex:0 0 auto}
+.icon-btn{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+  color:var(--text-3);transition:.15s}
+.icon-btn:hover{background:var(--tile-hover);color:var(--text)}
+.icon-btn:active{transform:scale(.94)}
+.icon-btn.close:hover{background:var(--danger-soft);color:var(--danger)}
+.icon-btn.spin svg{animation:spin .7s var(--ease-out)}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+.body{flex:1;overflow-y:auto;padding:0 6px 8px;position:relative;z-index:2}
+.body::-webkit-scrollbar{width:7px}
+.body::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:99px}
+
+.row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:11px;align-items:center;
+  padding:11px 10px;border-radius:10px;position:relative;transition:background .16s}
+.row:hover{background:var(--tile)}
+.row.dragging{background:var(--accent-soft)}
+.row.off .name{color:var(--text-2)}
+.row.off .tile{opacity:.55}
+.row::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:1px;
+  background:var(--line);opacity:.8}
+.row:last-child::after{display:none}
+.tile{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--text-2);flex:0 0 auto;
+  position:relative;transition:.18s}
+html[data-theme="light"] .tile{background:var(--surface-2)}
+.row:hover .tile{border-color:var(--line-strong);color:var(--text)}
+.tile .chg{position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;
+  background:var(--ok);border:2px solid var(--surface);display:none}
+.row[data-chg="1"] .tile .chg{display:block;animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.mid{min-width:0;display:flex;flex-direction:column;gap:5px}
+.name{font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;justify-self:start;border-radius:5px;padding:0 2px;margin-left:-2px;
+  cursor:text}
+.name:hover{background:var(--tile-hover)}
+.meter{height:3px;border-radius:99px;background:var(--tile-hover);overflow:hidden;width:100%}
+.meter i{display:block;height:100%;border-radius:99px;background:var(--ok);
+  transition:width .5s var(--ease-out),background .3s}
+.row[data-band="mid"] .meter i{background:var(--accent)}
+.row[data-band="low"] .meter i{background:var(--danger)}
+.val{display:flex;align-items:baseline;gap:5px;justify-self:end;position:relative}
+.pct{font-size:15px;font-weight:500;letter-spacing:-.01em;color:var(--text)}
+.row[data-band="low"] .pct{color:var(--danger)}
+.pct small{font-size:10.5px;font-weight:400;color:var(--text-3);margin-left:1px}
+.more{position:absolute;right:0;top:50%;transform:translateY(-50%) scale(.8);opacity:0;
+  width:24px;height:24px;border-radius:7px;display:grid;place-items:center;
+  color:var(--text-3);background:var(--surface-2);border:1px solid var(--line);
+  pointer-events:none;transition:.16s;cursor:grab}
+.row:hover .more{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}
+.row:hover .pct{opacity:0;transition:opacity .12s}
+
+.empty{padding:26px 14px;text-align:center;color:var(--text-3);font-size:12.5px}
+
+/* compact rows */
+.crow{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:center;
+  padding:7px 8px;border-radius:8px;font-size:12.5px}
+.crow:hover{background:var(--tile)}
+.crow .ct{width:20px;height:20px;display:grid;place-items:center;color:var(--text-2)}
+.crow .cp{font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.crow.low .cp{color:var(--danger)}
+.cdot{width:5px;height:5px;border-radius:50%;background:var(--ok)}
+.cdot.off{background:var(--text-3)}
+
+/* tray */
+.traybar{position:absolute;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;
+  justify-content:flex-end;gap:12px;padding:0 16px;border-top:1px solid var(--line);
+  background:color-mix(in srgb,var(--surface) 90%,transparent)}
+.traybar .lab{font-size:11.5px;color:var(--text-3);margin-right:auto;letter-spacing:.02em}
+.trayico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+  color:var(--text-2);cursor:pointer;transition:.15s;position:relative}
+.trayico:hover{background:var(--tile-hover);color:var(--text)}
+.trayico .badge{position:absolute;right:-1px;top:-1px;width:6px;height:6px;border-radius:50%;
+  background:var(--accent)}
+.card{position:absolute;right:14px;bottom:52px;width:250px;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:12px;box-shadow:var(--shadow);
+  padding:12px;opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;
+  transition:.2s var(--ease-out);z-index:30}
+.card.on{opacity:1;transform:none}
+.card h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);
+  font-weight:500;margin-bottom:9px}
+.card .cl{display:flex;align-items:center;gap:9px;padding:6px 4px;border-radius:7px;font-size:12.5px}
+.card .cl:hover{background:var(--tile)}
+.card .cl .cp{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-2)}
+.card .cl.low .cp{color:var(--danger)}
+.card .foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
+  font-size:11px;color:var(--text-3);text-align:center}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:60px;transform:translate(-50%,14px);
+  background:var(--surface-3);border:1px solid var(--line-strong);border-radius:10px;
+  padding:10px 16px;font-size:12.5px;color:var(--text);opacity:0;pointer-events:none;
+  transition:.26s var(--ease-out);box-shadow:var(--shadow);z-index:50;
+  display:flex;align-items:center;gap:9px;max-width:320px}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.warn{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,var(--surface-3))}
+.toast .k{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.toast.warn .k{background:var(--danger)}
+
+/* settings sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;top:44px;background:var(--surface);
+  border-top:1px solid var(--line-strong);border-radius:14px 14px 0 0;transform:translateY(101%);
+  transition:transform .32s var(--ease-out);z-index:20;display:flex;flex-direction:column}
+.sheet.on{transform:none}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px}
+.sheet-head h3{font-size:13.5px;font-weight:500}
+.sheet-body{padding:0 12px 18px;overflow-y:auto;font-size:12.5px}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 8px;border-radius:9px}
+.srow:hover{background:var(--tile)}
+.srow .t{display:flex;flex-direction:column;gap:2px}
+.srow .t span{color:var(--text-3);font-size:11px}
+.sw{width:34px;height:19px;border-radius:99px;background:var(--tile-hover);position:relative;
+  flex:0 0 auto;transition:.2s;cursor:pointer;border:1px solid var(--line)}
+.sw i{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:var(--text-3);transition:.22s var(--snap)}
+.sw.on{background:var(--accent-soft);border-color:var(--accent)}
+.sw.on i{left:17px;background:var(--accent)}
+.sbtns{display:flex;gap:7px;flex-wrap:wrap;padding:6px 8px 2px}
+.sbtn{font-size:12px;padding:7px 13px;border-radius:8px;border:1px solid var(--line-strong);
+  color:var(--text-2);transition:.16s}
+.sbtn:hover{background:var(--tile-hover);color:var(--text)}
+.sbtn.acc{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.snote{font-size:11px;color:var(--text-3);padding:8px 8px 0;line-height:1.6}
+
+.rz-se{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:10}
+.rz-se::after{content:"";position:absolute;right:4px;bottom:4px;width:7px;height:7px;
+  border-right:1.5px solid var(--text-3);border-bottom:1.5px solid var(--text-3);opacity:.5}
+
+/* ================= sections ================= */
+section{padding:84px 0}
+.eyebrow{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  font-weight:500;margin-bottom:16px}
+h2{font-size:clamp(27px,3.6vw,38px);font-weight:600;letter-spacing:-.025em;line-height:1.2;
+  margin-bottom:18px}
+h2 span{color:var(--text-3)}
+.sec-lede{color:var(--text-2);max-width:660px;font-size:15.5px;line-height:1.8}
+.grain{height:1px;background:linear-gradient(90deg,transparent,var(--line-strong),transparent)}
+
+/* pain */
+.pain{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:40px}
+.pain > div{background:var(--bg);padding:28px 24px}
+.pain b{display:block;font-size:14px;font-weight:500;margin-bottom:9px}
+.pain p{font-size:13.5px;color:var(--text-2);line-height:1.75}
+.pain .n{font-size:11px;color:var(--text-3);letter-spacing:.12em;margin-bottom:14px}
+@media(max-width:820px){.pain{grid-template-columns:1fr}}
+
+/* features */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px}
+.fcard{border:1px solid var(--line);border-radius:14px;padding:22px 20px;
+  background:color-mix(in srgb,var(--surface) 60%,transparent);transition:.22s var(--ease-out)}
+.fcard:hover{border-color:var(--line-strong);transform:translateY(-2px);background:var(--surface)}
+.fcard .ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);margin-bottom:15px}
+.fcard b{display:block;font-size:14px;font-weight:500;margin-bottom:8px}
+.fcard p{font-size:13px;color:var(--text-2);line-height:1.72}
+@media(max-width:900px){.feat{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.feat{grid-template-columns:1fr}}
+
+/* bands */
+.bands{display:flex;gap:12px;margin-top:36px;flex-wrap:wrap}
+.band{flex:1;min-width:190px;border:1px solid var(--line);border-radius:13px;padding:20px;
+  background:var(--surface)}
+.band .bar2{height:6px;border-radius:99px;background:var(--tile-hover);overflow:hidden;
+  margin-bottom:14px}
+.band .bar2 i{display:block;height:100%;border-radius:99px}
+.band b{font-size:13.5px;font-weight:500;display:block;margin-bottom:5px}
+.band span{font-size:12px;color:var(--text-3)}
+.band.ok .bar2 i{background:var(--ok);width:78%}
+.band.mid .bar2 i{background:var(--accent);width:24%}
+.band.low .bar2 i{background:var(--danger);width:7%}
+.band.ok b{color:var(--ok)} .band.mid b{color:var(--accent)} .band.low b{color:var(--danger)}
+
+/* table */
+table{width:100%;border-collapse:collapse;margin-top:34px;font-size:13.5px}
+th{text-align:left;font-weight:500;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);padding:0 14px 12px;border-bottom:1px solid var(--line-strong)}
+td{padding:15px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--text-2);
+  line-height:1.7}
+td:first-child{color:var(--text);width:28%;font-weight:500}
+td code{background:var(--tile);padding:1.5px 5px;border-radius:4px;color:var(--accent);
+  font-size:12px}
+tr:hover td{background:color-mix(in srgb,var(--tile) 60%,transparent)}
+
+/* sniffer */
+.sniff{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:38px;align-items:start}
+@media(max-width:860px){.sniff{grid-template-columns:1fr}}
+.term{background:#0d0d0e;border:1px solid var(--line-strong);border-radius:13px;overflow:hidden;
+  font-family:"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.9}
+html[data-theme="light"] .term{background:#151517}
+.term .th{display:flex;align-items:center;gap:7px;padding:10px 13px;border-bottom:1px solid var(--line);
+  color:var(--text-3);font-size:11px;letter-spacing:.04em}
+.term .th i{width:7px;height:7px;border-radius:50%;background:#333;display:block}
+.term .tb{padding:13px 15px;color:#8f8b84;white-space:pre;overflow-x:auto;
+  font-size:11.5px;line-height:1.85}
+.term .tb .hl{color:#e5b36a}
+.term .tb .gd{color:#6fca9f}
+.term .tb .dim{color:#4d4a46}
+.steps{margin-top:6px}
+.step{display:flex;gap:15px;padding:17px 0;border-bottom:1px solid var(--line)}
+.step:last-child{border:0}
+.step .num{width:24px;height:24px;border-radius:50%;border:1px solid var(--line-strong);
+  display:grid;place-items:center;font-size:11px;color:var(--accent);flex:0 0 auto;margin-top:2px}
+.step b{font-size:13.5px;font-weight:500;display:block;margin-bottom:5px}
+.step p{font-size:13px;color:var(--text-2);line-height:1.72}
+
+/* code block */
+pre{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:18px 20px;overflow-x:auto;font-family:"Cascadia Code",Consolas,monospace;
+  font-size:12.5px;line-height:1.85;color:var(--text-2);margin-top:16px}
+pre .k{color:var(--accent)} pre .s{color:var(--ok)} pre .c{color:var(--text-3)}
+
+/* install */
+.inst{display:grid;grid-template-columns:1.05fr .95fr;gap:22px;margin-top:38px}
+@media(max-width:860px){.inst{grid-template-columns:1fr}}
+.icard{border:1px solid var(--line);border-radius:15px;padding:26px 24px;background:var(--surface)}
+.icard.heroic{border-color:var(--accent);background:
+  linear-gradient(180deg,var(--accent-soft),transparent 70%),var(--surface)}
+.icard .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+  margin-bottom:12px}
+.icard h3{font-size:19px;font-weight:600;letter-spacing:-.02em;margin-bottom:10px}
+.icard p{font-size:13.5px;color:var(--text-2);line-height:1.75}
+.icard .dl{display:inline-flex;align-items:center;gap:8px;margin-top:18px;font-size:13.5px;
+  color:var(--accent);border-bottom:1px solid transparent}
+.icard .dl:hover{border-color:var(--accent)}
+
+/* footer */
+footer{border-top:1px solid var(--line);padding:44px 0 60px;color:var(--text-3);font-size:12.5px}
+footer .in{max-width:1060px;margin:0 auto;padding:0 24px;display:flex;gap:18px;
+  justify-content:space-between;flex-wrap:wrap;align-items:center}
+footer a:hover{color:var(--text)}
+.kbd{display:inline-block;border:1px solid var(--line-strong);border-bottom-width:2px;
+  border-radius:5px;padding:0 5px;font-size:11px;color:var(--text-2);
+  font-family:"Cascadia Code",Consolas,monospace}
+</style>
+</head>
+<body>
+
+<nav><div class="in">
+  <div class="mark"><svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+    <circle cx="16" cy="16" r="13" stroke="currentColor" stroke-opacity=".28" stroke-width="1.6"/>
+    <path d="M16 3a13 13 0 0 1 0 26" stroke="currentColor" stroke-opacity=".55" stroke-width="1.6"/>
+    <circle cx="16" cy="16" r="3.1" fill="#e5b36a"/>
+  </svg>echo</div>
+  <div class="links">
+    <a href="#demo">在线体验</a>
+    <a href="#how">电量从哪来</a>
+    <a href="#sniff">探测</a>
+    <a href="#get">下载</a>
+  </div>
+  <a class="ghost" href="https://github.com/yunchilvy/Echo" target="_blank" rel="noopener" id="ghlink">GitHub</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <svg class="icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <circle cx="16" cy="16" r="13" stroke="#918d86" stroke-opacity=".34" stroke-width="1.5"/>
+    <path d="M16 3a13 13 0 0 1 0 26" stroke="#918d86" stroke-opacity=".7" stroke-width="1.5"/>
+    <circle cx="16" cy="16" r="3.1" fill="#e5b36a"/>
+  </svg>
+  <h1>所有无线设备的电量<br><em>都在这一屏</em></h1>
+  <p class="lede">蓝牙耳机、蓝牙音箱、2.4G 鼠标键盘 —— 一行一台，<b>不联网</b>、<b>不接管音频通道</b>、<b>空闲几乎不占 CPU</b>。读不到电量时它显示「—」，而不是编一个数字给你。</p>
+  <p class="sub">Windows 10 / 11 · 单文件 12 MB · MIT 开源</p>
+  <div class="cta">
+    <a class="btn primary" href="#get">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 13h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      下载 Echo.exe
+    </a>
+    <a class="btn second" href="#demo">先在这里试一下</a>
+  </div>
+  <div class="pillrow">
+    <span class="pill">无遥测 · 无更新检查</span>
+    <span class="pill">只有 pywebview 一个依赖</span>
+    <span class="pill">HID 层纯 ctypes</span>
+    <span class="pill">可自定义协议</span>
+  </div>
+
+  <!-- ============ DEMO ============ -->
+  <div class="stage" id="demo">
+    <div class="stage-head">
+      <span class="dot"></span><span>在线体验 · 这是把 Echo 的界面与交互搬到浏览器里的复刻版</span>
+      <div class="hint">
+        <span><b>拖动</b>标题栏移动</span>
+        <span><b>拖右下角</b>缩放</span>
+        <span><b>悬停</b>托盘图标</span>
+      </div>
+    </div>
+    <div class="stage-body" id="stageBody">
+
+      <div class="win" id="win">
+        <div class="bar">
+          <div class="brand" id="dragbar">
+            <svg width="14" height="14" viewBox="0 0 32 32" fill="none">
+              <circle cx="16" cy="16" r="13" stroke="currentColor" stroke-opacity=".3" stroke-width="2"/>
+              <path d="M16 3a13 13 0 0 1 0 26" stroke="currentColor" stroke-opacity=".7" stroke-width="2"/>
+              <circle cx="16" cy="16" r="3" fill="#e5b36a"/>
+            </svg>
+            <b>echo</b>
+            <span class="sum" id="sum">3 台已连接 · 最低 8%</span>
+          </div>
+          <div class="bar-actions">
+            <button class="icon-btn" id="btnRefresh" title="立即刷新 (Ctrl+R)">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.9-4.2M13.5 2v3.2h-3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn" id="btnTray" title="收进托盘 (Ctrl+M)">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 10.5V12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 14 12v-1.5M8 2v7m0 0 2.6-2.6M8 9 5.4 6.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn" id="btnCompact" title="紧凑模式">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 2v4H2M10 14v-4h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn close" id="btnClose" title="关闭">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="body" id="rows"></div>
+        <div class="cbody" id="crows"></div>
+
+        <div class="sheet" id="sheet">
+          <div class="sheet-head">
+            <h3>设置</h3>
+            <div style="display:flex;gap:4px">
+              <button class="icon-btn" id="btnTheme" title="切换深浅主题">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn" id="btnSheetClose">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="sheet-body">
+            <div class="srow"><div class="t">开机自启<b style="font-weight:400;color:var(--text)">登录时静默启动</b><span>只进托盘，不弹窗</span></div><div class="sw on" data-sw><i></i></div></div>
+            <div class="srow"><div class="t">低电量预警<b style="font-weight:400;color:var(--text)">跌破 10% 提示一次</b><span>充回 10% 以上后重新武装</span></div><div class="sw on" data-sw><i></i></div></div>
+            <div class="srow"><div class="t">跟随系统主题<b style="font-weight:400;color:var(--text)">深色 / 浅色</b><span>也可以在这里手动切</span></div><div class="sw on" data-sw><i></i></div></div>
+            <div class="snote" style="border-top:1px solid var(--line);margin-top:8px;padding-top:14px">
+              <b style="color:var(--text)">2.4G 探测</b><br>
+              读不到电量时，抓 8 秒原始报文，一键复制「给 Agent 的说明」，让 AI 帮你把设备接进来。
+            </div>
+            <div class="sbtns">
+              <button class="sbtn acc" id="btnSniff">嗅探 8 秒</button>
+              <button class="sbtn" id="btnCopy">复制给 Agent</button>
+            </div>
+            <div class="snote">演示环境不会真的访问 HID 接口，这里模拟一次嗅探输出。</div>
+          </div>
+        </div>
+        <div class="rz-se" id="rz"></div>
+      </div>
+
+      <div class="traybar">
+        <span class="lab">↓ 这是模拟的任务栏，鼠标停到托盘图标上</span>
+        <div class="trayico" id="trayico" title="Echo">
+          <svg width="17" height="17" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="13" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
+            <path d="M16 3a13 13 0 0 1 0 26" stroke="currentColor" stroke-opacity=".8" stroke-width="2"/>
+            <circle cx="16" cy="16" r="3.1" fill="#e5b36a"/>
+          </svg>
+          <span class="badge"></span>
+        </div>
+        <div class="card" id="traycard">
+          <h4>已连接</h4>
+          <div id="cardlist"></div>
+          <div class="foot">点击卡片打开主窗口</div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"><span class="k"></span><span id="toastmsg"></span></div>
+    </div>
+  </div>
+</div></header>
+
+<div class="wrap"><div class="grain"></div></div>
+
+<!-- ================= why ================= -->
+<section id="why"><div class="wrap">
+  <div class="eyebrow">为什么需要它</div>
+  <h2>Windows 自己不知道<br><span>你的耳机还剩多少电</span></h2>
+  <p class="sec-lede">蓝牙耳机的电量藏在系统设置的三层菜单里，2.4G 键盘的电量藏在厂商驱动里，鼠标的电量通常根本不存在。第三方工具要么常驻后台扫蓝牙、占着音频通道，要么给你一个看起来很确定的错数字。</p>
+  <div class="pain">
+    <div><div class="n">01</div><b>散落在三个地方</b><p>耳机、键盘、手柄各有一套查法，想知道"还能用多久"得开三个窗口。</p></div>
+    <div><div class="n">02</div><b>数字是猜的</b><p>设备断开了还显示"100%"，因为它读的是上次连接的缓存，而不是现在。</p></div>
+    <div><div class="n">03</div><b>代价太大</b><p>为了一个百分比装一整套驱动框架，常驻扫描、抢占音频通道、拖慢开机。</p></div>
+  </div>
+</div></section>
+
+<!-- ================= features ================= -->
+<section style="padding-top:0"><div class="wrap">
+  <div class="eyebrow">它做什么</div>
+  <h2>只做一件事，<span>做到没有多余动作</span></h2>
+  <div class="feat">
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M2 4h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+      <b>一份清单</b><p>蓝牙耳机 / 音箱、2.4G 鼠标键盘 / 手柄，连同「配对过但没连」的设备一起列出，一行一台。</p>
+    </div>
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 11V8m4 3V5m4 6V9m4 2V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <b>三档配色</b><p><code>&gt;30%</code> 绿、<code>10–30%</code> 橙、<code>&lt;10%</code> 红。跌破 10% 弹一次预警，充回 10% 以上才重新武装。</p>
+    </div>
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 13V3m0 10h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 9l2.5-3L11 8l2-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <b>不编数字</b><p>读不到就是「—」。断开的设备只显示「上次 86%」，并明确告诉你它现在没连着。</p>
+    </div>
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 8h11" stroke="currentColor" stroke-width="1.4"/></svg></div>
+      <b>收得起来</b><p>拖标题栏移动、八向缩放，位置和尺寸写进配置下次原地打开。还能缩成一条置顶窄条。</p>
+    </div>
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg></div>
+      <b>托盘卡片</b><p>鼠标停在托盘图标上弹出小卡片：只列已连接设备，配色跟随主题，不进任务栏、不抢焦点。</p>
+    </div>
+    <div class="fcard">
+      <div class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="8" r="1.8" stroke="currentColor" stroke-width="1.3"/></svg></div>
+      <b>可改可拖</b><p>每台设备独立改名、九种图标任选；按住行尾 <code>…</code> 拖动排序，已连接的始终排最前。</p>
+    </div>
+  </div>
+
+  <div class="bands">
+    <div class="band ok"><div class="bar2"><i></i></div><b>&gt; 30%</b><span>不用管它</span></div>
+    <div class="band mid"><div class="bar2"><i></i></div><b>10 – 30%</b><span>该留意了</span></div>
+    <div class="band low"><div class="bar2"><i></i></div><b>&lt; 10%</b><span>弹一次预警</span></div>
+  </div>
+</div></section>
+
+<!-- ================= how ================= -->
+<section id="how" style="padding-top:0"><div class="wrap">
+  <div class="eyebrow">可信度</div>
+  <h2>每条读数都有出处<span>，没有一条是猜的</span></h2>
+  <p class="sec-lede">这是 Echo 与「显示一个百分比」的工具真正不同的地方。下面是它读电量的全部路径，代码里能逐条对得上。</p>
+  <table>
+    <thead><tr><th>设备类型</th><th>读取方式</th></tr></thead>
+    <tbody>
+      <tr><td>蓝牙耳机 / 音箱</td><td>Windows 蓝牙栈把 HFP 上报写在设备节点的未公开属性 <code>{104EA319-6EE2-4701-BD47-8DDBF425BBE5}, 2</code>，Echo 直接从系统读，<b>不碰音频流</b></td></tr>
+      <tr><td>蓝牙是否真的连着</td><td>查 <code>MMDevices</code> 里同名音频端点的 <code>DeviceState</code>，只有 <code>ACTIVE</code> 才算连着 —— 这就是「耳机在包里却显示满电」的根源</td></tr>
+      <tr><td>2.4G 主动上报类</td><td>设备每 2 秒推 <code>03 型号 40|41 充电状态 电量</code>，常驻监听、收到即更新，8 秒无帧判为休眠，但保留「上次 xx%」</td></tr>
+      <tr><td>2.4G 查询类</td><td>内置协议表：罗技 HID++ 2.0、ATK / VXE / VGN、VAXEE / ZYGEN、Endgame Gear、Nordic nRF、杰理 TLV</td></tr>
+      <tr><td>标准 HID 电量</td><td>描述符里声明了 Battery Strength（Usage Page <code>0x06</code> / <code>0x85</code>）就直接读 Feature Report</td></tr>
+    </tbody>
+  </table>
+  <p class="sec-lede" style="margin-top:26px;border-left:2px solid var(--accent);padding-left:16px">
+    <b style="color:var(--text)">不是所有 2.4G 都能读。</b> 百元级键鼠套装的接收器往往既不查询也不上报，把电量留在自家驱动软件里。这种设备 Echo 照常列出、标注「无等待上报」，而不是给你一个好看但错的数字。
+  </p>
+</div></section>
+
+<div class="wrap"><div class="grain"></div></div>
+
+<!-- ================= sniff ================= -->
+<section id="sniff"><div class="wrap">
+  <div class="eyebrow">给读不到的设备留一扇门</div>
+  <h2>抓 8 秒报文，<span>让 AI 把它接进来</span></h2>
+  <p class="sec-lede">大多数工具到此为止。Echo 在设置里留了「2.4G 探测」：并行打开所有可读的 HID 输入接口，把原始报文按十六进制列出来，自动标出取值落在 1–100、可能随电量漂移的字节。</p>
+  <div class="sniff">
+    <div>
+      <div class="term">
+        <div class="th"><i></i><i></i><i></i><span style="margin-left:6px">2.4G 嗅探 · 8.0s · 3 个接口</span></div>
+        <div class="tb"><span class="dim">[0] 1D57:FA65  0x000A:0x0000  in=5</span>
+<span class="hl">03 99 40 01 56</span>  ×4   <span class="gd">← 电量 第4字节 = 86</span>
+<span class="hl">03 99 41 03 56</span>  ×2   <span class="gd">← 充电中</span>
+<span class="dim">[1] 046D:C547  0x0001:0x0002  in=20</span>
+<span class="dim">11 ff 00 07 00 00 00 00 00 00 …</span>
+<span class="dim">[2] 1D57:FA65  0xFF00:0x0001  in=0  ← 不可读</span>
+
+<span class="gd">判定：接口 [0] 为主动上报</span>
+<span class="gd">建议写入 protocols.json</span></div>
+      </div>
+      <p class="sec-lede" style="font-size:13px;margin-top:14px">「复制给 Agent 的说明」会把 <code>docs/AGENT.md</code> 连同现场数据拼成一段文本，粘给任意 AI 就能拿到配置。</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><b>嗅探</b><p>8 秒，抓到所有能读的接口和报文，按出现频次归并。</p></div></div>
+      <div class="step"><div class="num">2</div><div><b>标记候选</b><p>取值 1–100、且在多帧间漂移的字节会被标出来，其余直接排除。</p></div></div>
+      <div class="step"><div class="num">3</div><div><b>交给 AI</b><p>附上帧格式与判断步骤，AI 告诉你电量在第几字节，或直接给配置。</p></div></div>
+      <div class="step"><div class="num">4</div><div><b>写进 JSON</b><p>补一条 <code>protocols.json</code>，重启生效，不用改代码。</p></div></div>
+    </div>
+  </div>
+
+<pre><span class="c">// %APPDATA%\Echo\protocols.json</span>
+[
+  {
+    <span class="k">"name"</span>: <span class="s">"我的接收器"</span>,
+    <span class="k">"vid"</span>: <span class="s">"1D57"</span>,
+    <span class="k">"usage_page"</span>: <span class="s">"FF00"</span>,
+    <span class="k">"report_id"</span>: <span class="s">"08"</span>,
+    <span class="k">"payload"</span>: [125, 114, 2, 0, 1, 7, 1],
+    <span class="k">"level_offset"</span>: 7,
+    <span class="k">"level_max"</span>: 100,
+    <span class="k">"mode"</span>: <span class="s">"auto"</span>
+  }
+]</pre>
+</div></section>
+
+<!-- ================= get ================= -->
+<section id="get" style="padding-top:0"><div class="wrap">
+  <div class="eyebrow">拿到它</div>
+  <h2>一个 exe，<span>双击就完事</span></h2>
+  <div class="inst">
+    <div class="icard heroic">
+      <div class="tag">推荐</div>
+      <h3>下载 Echo.exe</h3>
+      <p>单文件、约 12 MB，不需要装 Python，没有安装程序，也没有开机引导。第一次运行会在 <code>%APPDATA%\Echo\</code> 建三个配置文件。</p>
+      <a class="dl" href="https://github.com/yunchilvy/Echo/releases" target="_blank" rel="noopener" id="dl1">去 Releases 取最新版 →</a>
+    </div>
+    <div class="icard">
+      <div class="tag">从源码</div>
+      <h3>两条命令跑起来</h3>
+      <pre style="margin-top:14px"><span class="c">pip install pywebview</span>
+<span class="c">python app.py</span></pre>
+      <p style="margin-top:14px">需要 Windows 10/11 与 WebView2 运行时（Win 11 自带，Win 10 装了 Edge 就有）。</p>
+    </div>
+  </div>
+
+  <div class="feat" style="margin-top:22px">
+    <div class="fcard"><b>不联网</b><p>没有更新检查、没有统计上报、没有远程配置。想验证的话，断网它照样跑。</p></div>
+    <div class="fcard"><b>不写日志</b><p>只有 <code>ECHO_DEBUG=1</code> 启动时才会打开调试面板。配置全在本机。</p></div>
+    <div class="fcard"><b>不占通道</b><p>空闲时不轮询蓝牙、不碰音频流；只有主动上报类设备挂一个监听线程。</p></div>
+  </div>
+
+  <p class="sec-lede" style="margin-top:34px;color:var(--text-3);font-size:13.5px">
+    快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">R</span> 刷新 ·
+    <span class="kbd">Ctrl</span> + <span class="kbd">M</span> 收进托盘 ·
+    <span class="kbd">Esc</span> 关闭弹层。关闭窗口默认只是收进托盘，真正退出用托盘右键 → 退出。
+  </p>
+</div></section>
+
+<footer><div class="in">
+  <span>Echo · MIT License · 用 Python 与 ctypes 手写，界面就是一个 HTML 文件</span>
+  <span style="display:flex;gap:18px">
+    <a href="https://github.com/yunchilvy/Echo" target="_blank" rel="noopener" id="gh2">GitHub</a>
+    <a href="#demo">在线体验</a>
+    <a href="#get">下载</a>
+  </span>
+</div></footer>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s,r){return (r||document).querySelector(s)};
+  var $$ = function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+
+  /* ---------- data ---------- */
+  var DEV = [
+    {id:1,name:"Bose QC45",kind:"headset",link:"bt",level:78,chg:0,on:true,src:"蓝牙 · HFP 上报"},
+    {id:2,name:"IN10 8K",kind:"combo",link:"2.4g",level:22,chg:0,on:true,src:"2.4G · 主动上报"},
+    {id:3,name:"MX Master 3S",kind:"mouse",link:"2.4g",level:8,chg:1,on:true,src:"2.4G · HID++ 查询"},
+    {id:4,name:"Soundcore 3",kind:"speaker",link:"bt",level:54,chg:0,on:false,src:"蓝牙 · 未连接"},
+    {id:5,name:"杂牌接收器",kind:"keyboard",link:"2.4g",level:null,chg:0,on:true,src:"无等待上报"}
+  ];
+  var ICONS = {
+    headset:'<path d="M3 9v3a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H3m8 0h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1a2 2 0 0 1-2-2V9M3 9a5 5 0 0 1 10 0" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>',
+    combo:'<rect x="1.5" y="4" width="11" height="6" rx="1.4" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M4 7h1.6M5.4 6.2v1.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M10 13.2h2M11 13.2V12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+    mouse:'<rect x="4.4" y="1.6" width="5.2" height="10.8" rx="2.6" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M7 1.8v3.2" stroke="currentColor" stroke-width="1.2"/>',
+    speaker:'<rect x="2.6" y="1.6" width="8.8" height="10.8" rx="1.8" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="7" cy="9.4" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="7" cy="4.4" r=".9" fill="currentColor"/>',
+    keyboard:'<rect x="1.4" y="4.4" width="11.2" height="5.2" rx="1.2" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M3.4 6.2h.01M5.4 6.2h.01M7.4 6.2h.01M9.4 6.2h.01M11 6.2h.01M4 8h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>'
+  };
+  function band(v){ if(v===null) return "none"; if(v<10) return "low"; if(v<=30) return "mid"; return "ok"; }
+  function icon(kind){ return '<svg width="16" height="16" viewBox="0 0 14 14">'+(ICONS[kind]||ICONS.headset)+'</svg>'; }
+
+  /* ---------- render ---------- */
+  var rowsEl=$("#rows"), crowsEl=$("#crows"), cardListEl=$("#cardlist");
+  function render(){
+    var connected = DEV.filter(function(d){return d.on});
+    var levels = connected.filter(function(d){return d.level!==null}).map(function(d){return d.level});
+    var min = levels.length?Math.min.apply(null,levels):0;
+    $("#sum").textContent = connected.length+" 台已连接 · 最低 "+min+"%";
+
+    rowsEl.innerHTML = DEV.map(function(d){
+      var b = band(d.level);
+      var pct = d.level===null ? "—" : d.level;
+      var sub = d.level===null
+        ? '<small>无等待上报</small>'
+        : (d.on ? (d.chg?'<small>充电中</small>':'<small>%</small>') : '<small>上次 '+d.level+'%</small>');
+      var shown = d.on ? pct : (d.level===null?"—":"—");
+      return '<div class="row'+(d.on?"":" off")+'" data-band="'+b+'" data-chg="'+d.chg+'" data-id="'+d.id+'">'
+        + '<div class="tile">'+icon(d.kind)+'<span class="chg"></span></div>'
+        + '<div class="mid"><div class="name">'+d.name+'</div>'
+        + '<div class="meter"><i style="width:'+(d.level===null?0:(d.on?d.level:0))+'%"></i></div></div>'
+        + '<div class="val"><span class="pct">'+(d.on?pct:"—")+(d.on&&d.level!==null?'<small>%</small>':'')+'</span>'
+        + '<button class="more" title="重命名 / 拖动排序"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="3" cy="7" r="1.15" fill="currentColor"/><circle cx="7" cy="7" r="1.15" fill="currentColor"/><circle cx="11" cy="7" r="1.15" fill="currentColor"/></svg></button></div>'
+        + '</div>';
+    }).join("");
+
+    crowsEl.innerHTML = DEV.map(function(d){
+      if(!d.on) return "";
+      var b = band(d.level);
+      return '<div class="crow'+(b==="low"?" low":"")+'" data-band="'+b+'" data-id="'+d.id+'">'
+        + '<span class="ct">'+icon(d.kind)+'</span>'
+        + '<span class="name" style="font-size:12.5px">'+d.name+'</span>'
+        + '<span class="cp">'+(d.level===null?"—":d.level+"%")+'</span></div>';
+    }).join("");
+
+    cardListEl.innerHTML = connected.length ? connected.map(function(d){
+      var b=band(d.level);
+      return '<div class="cl'+(b==="low"?" low":"")+'">'+icon(d.kind)
+        + '<span>'+d.name+'</span><span class="cp">'+(d.level===null?"—":d.level+"%")+'</span></div>';
+    }).join("") : '<div style="font-size:12px;color:var(--text-3);padding:6px 4px">没有已连接的设备</div>';
+  }
+  render();
+
+  /* ---------- toast ---------- */
+  var toast=$("#toast"), tmsg=$("#toastmsg"), tTimer;
+  function say(msg,warn){
+    tmsg.textContent=msg; toast.classList.toggle("warn",!!warn); toast.classList.add("on");
+    clearTimeout(tTimer); tTimer=setTimeout(function(){toast.classList.remove("on")},2600);
+  }
+
+  /* ---------- drag window ---------- */
+  var win=$("#win"), bar=$("#dragbar"), body=$("#stageBody");
+  var drag=null;
+  bar.addEventListener("pointerdown",function(e){
+    if(win.classList.contains("compact")) return;
+    var r=win.getBoundingClientRect(), pr=body.getBoundingClientRect();
+    // switch to left/top positioning for free movement
+    win.style.transform="none";
+    win.style.left=(r.left-pr.left)+"px"; win.style.top=(r.top-pr.top)+"px";
+    drag={dx:e.clientX-r.left,dy:e.clientY-r.top};
+    win.classList.add("dragging");
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener("pointermove",function(e){
+    if(!drag) return;
+    var pr=body.getBoundingClientRect();
+    var x=Math.max(4,Math.min(e.clientX-pr.left-drag.dx, pr.width-win.offsetWidth-4));
+    var y=Math.max(4,Math.min(e.clientY-pr.top-drag.dy, pr.height-win.offsetHeight-48));
+    win.style.left=x+"px"; win.style.top=y+"px";
+  });
+  function endDrag(){ drag=null; win.classList.remove("dragging"); }
+  bar.addEventListener("pointerup",endDrag);
+  bar.addEventListener("pointercancel",endDrag);
+
+  /* ---------- resize ---------- */
+  var rz=$("#rz"), rs=null;
+  rz.addEventListener("pointerdown",function(e){
+    rs={x:e.clientX,y:e.clientY,w:win.offsetWidth,h:win.offsetHeight};
+    rz.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  rz.addEventListener("pointermove",function(e){
+    if(!rs) return;
+    win.style.width=Math.max(250,rs.w+(e.clientX-rs.x))+"px";
+    win.style.height=Math.max(180,rs.h+(e.clientY-rs.y))+"px";
+  });
+  rz.addEventListener("pointerup",function(){rs=null});
+
+  /* ---------- row interactions: rename + reorder ---------- */
+  rowsEl.addEventListener("dblclick",function(e){
+    var n=e.target.closest(".name"); if(!n) return;
+    var row=n.closest(".row"), d=DEV.find(function(x){return x.id==row.dataset.id});
+    var input=document.createElement("input");
+    input.value=d.name;
+    input.style.cssText="font:inherit;font-size:13.5px;background:var(--surface-2);border:1px solid var(--accent);border-radius:5px;color:var(--text);padding:1px 5px;width:100%;outline:none";
+    n.replaceWith(input); input.focus(); input.select();
+    function done(save){
+      if(save && input.value.trim()) d.name=input.value.trim();
+      render();
+    }
+    input.addEventListener("blur",function(){done(true)});
+    input.addEventListener("keydown",function(ev){
+      if(ev.key==="Enter"){ev.preventDefault();done(true)}
+      if(ev.key==="Escape"){ev.preventDefault();done(false)}
+    });
+  });
+
+  var dragRow=null;
+  rowsEl.addEventListener("pointerdown",function(e){
+    var m=e.target.closest(".more"); if(!m) return;
+    e.preventDefault();
+    dragRow=m.closest(".row"); dragRow.classList.add("dragging");
+    var move=function(ev){
+      var t=document.elementFromPoint(ev.clientX,ev.clientY);
+      var over=t&&t.closest?t.closest(".row"):null;
+      $$(".row",rowsEl).forEach(function(r){r.style.borderTop="";r.style.borderBottom=""});
+      if(!over||over===dragRow) return;
+      over.style.borderTop=over.compareDocumentPosition(dragRow)&Node.DOCUMENT_POSITION_FOLLOWING?"2px solid var(--accent)":"";
+      over.style.borderBottom=over.compareDocumentPosition(dragRow)&Node.DOCUMENT_POSITION_PRECEDING?"2px solid var(--accent)":"";
+    };
+    var up=function(ev){
+      document.removeEventListener("pointermove",move);
+      document.removeEventListener("pointerup",up);
+      dragRow.classList.remove("dragging");
+      var t=document.elementFromPoint(ev.clientX,ev.clientY);
+      var over=t&&t.closest?t.closest(".row"):null;
+      $$(".row",rowsEl).forEach(function(r){r.style.borderTop="";r.style.borderBottom=""});
+      if(over&&over!==dragRow){
+        var from=DEV.findIndex(function(x){return x.id==dragRow.dataset.id});
+        var to=DEV.findIndex(function(x){return x.id==over.dataset.id});
+        var item=DEV.splice(from,1)[0];
+        DEV.splice(to,0,item);
+        say("顺序已存进配置");
+      }
+      render();
+    };
+    document.addEventListener("pointermove",move);
+    document.addEventListener("pointerup",up);
+  });
+
+  /* ---------- toolbar ---------- */
+  var btnRefresh=$("#btnRefresh");
+  btnRefresh.addEventListener("click",function(){
+    btnRefresh.classList.remove("spin"); void btnRefresh.offsetWidth; btnRefresh.classList.add("spin");
+    DEV.forEach(function(d){
+      if(d.level===null||!d.on) return;
+      d.level=Math.max(1,Math.min(100,d.level+(Math.random()<.5?-1:1)));
+    });
+    render(); say("已刷新 5 台设备");
+  });
+
+  var compact=false, btnCompact=$("#btnCompact");
+  btnCompact.addEventListener("click",function(){
+    compact=!compact;
+    win.classList.toggle("compact",compact);
+    // after compact, re-center so it doesn't jump off screen
+    win.style.transform="translateX(-50%)";
+    win.style.left="50%"; win.style.top="44px";
+    say(compact?"紧凑模式：只留名字和电量":"已展开");
+  });
+
+  var btnTray=$("#btnTray"), btnClose=$("#btnClose");
+  function toTray(){ win.style.display="none"; say("已收进托盘，悬停托盘图标看看"); }
+  btnTray.addEventListener("click",toTray);
+  btnClose.addEventListener("click",toTray);
+  $("#trayico").addEventListener("click",function(){
+    if(win.style.display==="none"){
+      win.style.display="flex"; win.style.left="50%"; win.style.transform="translateX(-50%)"; win.style.top="44px";
+    }
+  });
+
+  /* tray hover card */
+  var tray=$("#trayico"), card=$("#traycard"), ct;
+  function showCard(){ clearTimeout(ct); card.classList.add("on"); }
+  function hideCard(){ ct=setTimeout(function(){card.classList.remove("on")},260); }
+  tray.addEventListener("mouseenter",showCard);
+  tray.addEventListener("mouseleave",hideCard);
+  card.addEventListener("mouseenter",showCard);
+  card.addEventListener("mouseleave",hideCard);
+  card.addEventListener("click",function(){
+    win.style.display="flex"; win.style.left="50%"; win.style.transform="translateX(-50%)"; win.style.top="44px";
+    card.classList.remove("on"); say("主窗口已打开");
+  });
+
+  /* settings sheet */
+  var sheet=$("#sheet");
+  $("#btnCompact").addEventListener("dblclick",function(){});
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){ sheet.classList.remove("on") }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="r"){ e.preventDefault(); btnRefresh.click() }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="m"){ e.preventDefault(); toTray() }
+  });
+  $("#btnSheetClose").addEventListener("click",function(){sheet.classList.remove("on")});
+  $("#brand-settings");
+  // open settings by long-press on brand (desktop app uses a gear in the tray menu)
+  var brandHold;
+  $("#dragbar").addEventListener("pointerdown",function(){ brandHold=setTimeout(function(){sheet.classList.add("on")},700) });
+  $("#dragbar").addEventListener("pointerup",function(){clearTimeout(brandHold)});
+  $(".traybar").addEventListener("contextmenu",function(e){
+    e.preventDefault(); sheet.classList.add("on"); say("托盘右键 → 设置");
+  });
+
+  /* theme */
+  var themeBtns=$$("[data-sw]");
+  themeBtns.forEach(function(sw){ sw.addEventListener("click",function(){ sw.classList.toggle("on") }) });
+  function toggleTheme(){
+    var cur=document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme",cur==="dark"?"light":"dark");
+  }
+  $("#btnTheme").addEventListener("click",toggleTheme);
+
+  /* 2.4G sniff demo */
+  var sniffing=false;
+  $("#btnSniff").addEventListener("click",function(){
+    if(sniffing) return; sniffing=true;
+    var b=this; b.textContent="嗅探中…"; b.classList.add("acc");
+    say("正在打开所有可读的 HID 输入接口…");
+    setTimeout(function(){
+      b.textContent="嗅探 8 秒"; b.classList.remove("acc"); sniffing=false;
+      say("接口 [0] 判定为主动上报，电量在第 4 字节");
+      sheet.classList.remove("on");
+    },2200);
+  });
+  $("#btnCopy").addEventListener("click",function(){
+    var txt="docs/AGENT.md + 现场数据（演示环境不写入剪贴板）";
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).catch(function(){});
+    }
+    say("已复制「给 Agent 的说明」");
+  });
+
+  /* low battery demo — click a low-device's pct area to trigger warning */
+  var warned={};
+  function checkLow(){
+    DEV.forEach(function(d){
+      if(!d.on||d.level===null) return;
+      if(d.level<10 && !warned[d.id]){ warned[d.id]=1; say(d.name+" 电量只剩 "+d.level+"%，弹一次预警",true); }
+      if(d.level>=10) warned[d.id]=0;
+    });
+  }
+  checkLow();
+
+  /* links: fill from a single place so the repo URL is easy to update */
+  var REPO="https://github.com/yunchilvy/Echo";
+  ["ghlink","gh2","dl1"].forEach(function(id){ var el=document.getElementById(id); if(el) el.href=REPO; });
+
+  /* gentle idle jitter so it feels alive */
+  var idle=setInterval(function(){
+    if(document.hidden) return;
+    var d=DEV[1]; if(!d.on) return;
+    // no automatic change; keep values stable for reading
+  },99999);
+})();
+</script>
+</body>
+</html>

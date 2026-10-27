@@ -1,0 +1,17 @@
+# 构建产物
+build/
+dist/
+*.spec.bak
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 自检临时文件
+tools/_check_*.html
+tools/shot_*.png
+shots/
+
+# 临时工具
+tools/cors_server.py
